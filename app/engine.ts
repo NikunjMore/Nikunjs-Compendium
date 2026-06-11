@@ -105,6 +105,7 @@ export class DotEngine {
   private running = false;
   private lt = 0;
   private raf = 0;
+  private pausedAt = 0;
 
   readonly reduced: boolean;
   readonly ok: boolean;
@@ -142,6 +143,8 @@ export class DotEngine {
       });
       this.scene.add(new THREE.Points(this.geo, this.mat));
       this.resize();
+      /* loaded in a background tab: freeze the timeline until first view */
+      if (document.hidden) this.pausedAt = performance.now();
       addEventListener('resize', this.onResize, { passive: true });
       addEventListener('pointermove', this.onPointer, { passive: true });
       document.addEventListener('visibilitychange', this.onVis);
@@ -197,7 +200,31 @@ export class DotEngine {
     this.pointerX = nx;
     this.pointerY = ny;
   };
-  private onVis = () => { if (!document.hidden) this.kick(); };
+  /*
+   * Pause-aware visibility handling. rAF stops in hidden tabs, so when the
+   * page becomes visible again every pending launch and reveal timestamp is
+   * shifted forward by the time spent hidden. A visitor who opens the site
+   * in a background tab gets the full intro the moment they first look.
+   */
+  private onVis = () => {
+    if (document.hidden) {
+      this.pausedAt = performance.now();
+      return;
+    }
+    if (this.pausedAt) {
+      const shift = performance.now() - this.pausedAt;
+      this.pausedAt = 0;
+      for (const ri of this.active) {
+        const r = this.recs[ri];
+        if (!r.done) r.revealAt += shift;
+        else r.fadeAt += shift;
+      }
+      for (let i = 0; i < this.N; i++) {
+        if (this.st[i] === SEEK) this.seekT[i] += shift;
+      }
+    }
+    this.kick();
+  };
 
   private resize() {
     if (!this.renderer || !this.mat) return;
