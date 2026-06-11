@@ -3,6 +3,11 @@
  * Monotone by rule: blacks, greys, whites. Grey boxes mark the clickable
  * words; visited words drop their box and dim. The WebGL canvas of dots sits
  * above everything (pointer-events: none) so the field drifts over the page.
+ *
+ * Layout follows rohansanjay.com: Inter, content anchored to the left with
+ * long lines running right, plain bold section headers, generous calm. The
+ * vertical rhythm breathes with the viewport (vh-based clamps) so the page,
+ * fully expanded, still fits one screen on a laptop.
  */
 
 :root {
@@ -14,7 +19,6 @@
   --box: #161616;
   --box-hover: #232323;
   --mono: ui-monospace, "SF Mono", SFMono-Regular, Menlo, Consolas, monospace;
-  --sans: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
   --spring: cubic-bezier(0.16, 1, 0.3, 1);
 }
 
@@ -29,9 +33,8 @@ body {
   margin: 0;
   background: var(--bg);
   color: var(--fg);
-  font-family: var(--sans);
-  font-size: 17px;
-  line-height: 1.8;
+  font-size: 16.5px;
+  line-height: 1.62;
   -webkit-font-smoothing: antialiased;
   text-rendering: optimizeLegibility;
 }
@@ -42,7 +45,7 @@ body::before {
   position: fixed;
   inset: 0;
   pointer-events: none;
-  background: radial-gradient(1100px 520px at 50% -8%, #0c0c0c, transparent 70%);
+  background: radial-gradient(1100px 520px at 38% -8%, #0c0c0c, transparent 70%);
   z-index: 0;
 }
 
@@ -61,45 +64,42 @@ body::before {
 main {
   position: relative;
   z-index: 1;
-  max-width: 660px;
-  margin: 0 auto;
-  padding: clamp(76px, 14vh, 132px) 24px 72px;
+  max-width: 1060px;
+  margin: 0;
+  padding: clamp(28px, 6vh, 64px) 32px clamp(20px, 3vh, 32px) clamp(28px, 4vw, 52px);
 }
 
 /* ---------------- header ---------------- */
 
 h1 {
-  font-size: clamp(34px, 6vw, 46px);
-  font-weight: 650;
+  font-size: clamp(30px, 4.8vh, 40px);
+  font-weight: 700;
   letter-spacing: -0.02em;
-  line-height: 1.12;
+  line-height: 1.1;
   margin: 0;
 }
 
 .byline {
-  font-family: var(--mono);
-  font-size: 13px;
+  font-size: 14px;
   color: var(--dim);
-  margin: 14px 0 0;
+  margin: 10px 0 0;
 }
 
 .hint {
   font-family: var(--mono);
   font-size: 12px;
   color: var(--faint);
-  margin: 4px 0 0;
+  margin: 3px 0 0;
 }
 
 /* ---------------- sections ---------------- */
 
+/* Rohan-style headers: plain, bold, body-sized */
 .hdr {
-  font-family: var(--mono);
-  font-size: 11px;
-  font-weight: 500;
-  letter-spacing: 0.18em;
-  text-transform: uppercase;
-  color: var(--faint);
-  margin: 54px 0 10px;
+  font-size: 16.5px;
+  font-weight: 650;
+  color: #e9e9e9;
+  margin: clamp(16px, 3.4vh, 38px) 0 2px;
 }
 
 .js .hdr {
@@ -111,7 +111,7 @@ h1 {
 .js .hdr.show { opacity: 1; transform: none; }
 .reduced .hdr { transition: none; }
 
-p { margin: 10px 0; }
+p { margin: clamp(4px, 1vh, 10px) 0; }
 
 strong { font-weight: 600; color: #ffffff; }
 
@@ -180,9 +180,9 @@ footer {
   align-items: center;
   gap: 16px;
   flex-wrap: wrap;
-  margin-top: 84px;
+  margin-top: clamp(18px, 4vh, 46px);
   border-top: 1px solid #1c1c1c;
-  padding-top: 18px;
+  padding-top: 14px;
   font-family: var(--mono);
   font-size: 12px;
   color: var(--faint);
@@ -229,19 +229,30 @@ footer a:hover { color: #ffffff; }
 .noscript {
   position: relative;
   z-index: 1;
-  max-width: 660px;
-  margin: 0 auto;
-  padding: 24px;
+  max-width: 760px;
+  margin: 0;
+  padding: 24px 32px;
   color: var(--dim);
+}
+
+/* ---------------- short laptop screens: tighten so it all fits ---------------- */
+
+@media (max-height: 860px) and (min-width: 700px) {
+  body { font-size: 15.5px; line-height: 1.52; }
+  h1 { font-size: clamp(27px, 4.4vh, 34px); }
+  .hdr { font-size: 15.5px; }
+  .byline { margin-top: 8px; }
 }
 
 /* ---------------- small screens ---------------- */
 
-@media (max-width: 540px) {
+@media (max-width: 560px) {
   body { font-size: 16px; line-height: 1.75; }
-  main { padding-top: 64px; }
+  main { padding: 56px 20px 40px; }
+  .hdr { margin: 34px 0 6px; }
+  p { margin: 10px 0; }
   .tok { padding: 0 6px 1px; }
-  footer { flex-direction: column; align-items: flex-start; gap: 10px; }
+  footer { flex-direction: column; align-items: flex-start; gap: 10px; margin-top: 48px; }
 }
 
 @media (prefers-reduced-motion: reduce) {

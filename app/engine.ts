@@ -176,7 +176,7 @@ export class DotEngine {
       this.py[i] = r() * innerHeight;
       this.vx[i] = (r() - 0.5) * 10;
       this.vy[i] = (r() - 0.5) * 10;
-      this.baseA[i] = 0.05 + r() * 0.3;
+      this.baseA[i] = 0.07 + r() * 0.36;
       this.size[i] = 1.5 + r() * 1.7;
       this.seed[i] = r();
       pos[i * 3] = this.px[i];
@@ -319,9 +319,9 @@ export class DotEngine {
       }
 
       /* FREE and RELEASE share the flow; RELEASE blends back in */
-      const [u, v] = curl2(px[i] * 0.0014, py[i] * 0.0014, t * 0.05);
-      const speed = 16 + this.seed[i] * 14;
-      const blend = 1 - Math.exp(-dt * (s === RELEASE ? 2.6 : 1.4));
+      const [u, v] = curl2(px[i] * 0.0011, py[i] * 0.0011, t * 0.075);
+      const speed = 22 + this.seed[i] * 18;
+      const blend = 1 - Math.exp(-dt * (s === RELEASE ? 2.6 : 1.6));
       vx[i] += (u * speed - vx[i]) * blend;
       vy[i] += (v * speed - vy[i]) * blend;
 
@@ -329,9 +329,9 @@ export class DotEngine {
       const mdx = px[i] - this.pointerX;
       const mdy = py[i] - this.pointerY;
       const md2 = mdx * mdx + mdy * mdy;
-      if (md2 < 8100 && md2 > 0.01) {
+      if (md2 < 12100 && md2 > 0.01) {
         const md = Math.sqrt(md2);
-        const f = (1 - md / 90) * stir * dt;
+        const f = (1 - md / 110) * stir * dt;
         vx[i] += (mdx / md) * f + pvx * 0.4 * dt;
         vy[i] += (mdy / md) * f + pvy * 0.4 * dt;
       }

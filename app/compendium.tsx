@@ -78,6 +78,8 @@ export default function Compendium() {
        * still replace while it boots.
        */
       await new Promise<void>((r) => requestAnimationFrame(() => requestAnimationFrame(() => r())));
+      /* Inter loads via next/font; wait so glyph sampling uses the real outlines */
+      try { await document.fonts.ready; } catch { /* older browsers */ }
       if (cancelled || !canvasRef.current || !rootRef.current) return;
 
       const reduced = matchMedia('(prefers-reduced-motion: reduce)').matches;

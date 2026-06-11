@@ -1,6 +1,10 @@
 import type { Metadata, Viewport } from 'next';
 import Script from 'next/script';
+import { Inter } from 'next/font/google';
 import './globals.css';
+
+/* Rohan's site sets Inter; we self-host it via next/font for zero layout shift. */
+const inter = Inter({ subsets: ['latin'], display: 'swap' });
 
 export const metadata: Metadata = {
   metadataBase: new URL('https://nikunjs-compendium.vercel.app'),
@@ -24,7 +28,7 @@ export const viewport: Viewport = {
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
-    <html lang="en">
+    <html lang="en" className={inter.className}>
       <body>
         {/* Flag JS before paint so prose stays hidden until the dots build it.
             Without JS the class never lands and the full text is visible. */}
