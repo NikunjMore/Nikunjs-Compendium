@@ -1,85 +1,87 @@
 # Nikunj's Compendium
 
-A one-page personal site where floating dots assemble the words.
+A one-page personal site where a WebGL field of dots assembles the words.
 
 **Live:** https://nikunjs-compendium.vercel.app
 
 Black background, white text, grey boxes. The grey boxes are clickable: each
 click expands the sentence in place (Los Feliz Engineering style), and every
-new word is built out of the tiny dots drifting around the page (Moment
-style). The layout stays calm and one-page (Rohan Sanjay style). A click
-counter keeps score at the bottom.
+new word is built by the dots drifting around the page (Moment style). The
+layout stays calm and one-page (Rohan Sanjay style). A click counter keeps
+score in the footer.
 
-## How it works
+## Stack
 
-No frameworks, no build step, no dependencies. Five small ES modules served
-as static files:
+Next.js 15 (App Router, static export) + React 19 + Three.js. TypeScript
+throughout, with the pure animation math in a plain ES module so `node --test`
+can hit it with zero tooling.
 
 | File | Role |
 | --- | --- |
-| `index.html` | Base sentences as real, crawlable HTML. Tokens are `<button class="tok">` elements. |
-| `styles.css` | The monotone system: blacks, greys, whites. Token, visited, reveal, and reduced-motion states. |
-| `utils.js` | Pure logic: easing, seeded PRNG, stagger scheduling, stride budgeting, nearest-neighbor borrowing. Fully unit tested. |
-| `particles.js` | The dot engine (see below). |
-| `main.js` | The expansion tree, token wiring, click counter, intro orchestration. |
-| `icons.js` | Hand-tuned 24x24 line icons (a few outlines adapted from Lucide, ISC license), `currentColor` strokes so they stay monotone. |
+| `app/engine.ts` | The WebGL dot engine (see below). |
+| `app/compendium.tsx` | The page: prose, intro orchestration, click counter. |
+| `app/content.tsx` | `<T>` char-span text primitive, tokens, the expansion tree. |
+| `app/icons.tsx` | Hand-tuned 24x24 line icons (a few adapted from Lucide, ISC). |
+| `app/globals.css` | The monotone system: token, visited, reveal, reduced-motion states. |
+| `utils.js` | Pure logic: curl noise, springs, scheduling, budgets. Unit tested. |
+| `utils.test.mjs` | 16 tests, `npm test`. |
 
-### The dot engine
+## The dot engine
 
-One fixed full-viewport canvas runs two populations:
+One persistent pool of 2,500 to 16,000 GPU-rendered points (sized to the
+viewport), drawn as soft additive sprites by a tiny shader. Two behaviors:
 
-1. **Ambient dots.** A sparse field of roughly 1px dots (60 to 170 depending
-   on viewport area) drifting slowly, twinkling, and easing away from the
-   cursor. This is the Moment field: visible, never overwhelming.
-2. **Flights.** When text needs to appear, every glyph is rasterized to an
-   offscreen canvas and sampled into target points (sampling stride adapts so
-   a whole paragraph stays under ~3,600 particles). Dots are borrowed from
-   the ambient field, nearest first, topped up with dots spawned around the
-   text, and each one flies to its point on a glyph with a cubic ease and a
-   slight curve. Launches stagger left to right, so the line reads as being
-   typed. As each character's dots land, the real DOM character fades in
-   underneath and the dots dissolve; borrowed dots re-enter the field at the
-   edges so the population stays constant.
+1. **Flow.** Free dots drift through a curl-noise field: the velocity is the
+   curl of a value-noise potential, which makes it divergence-free, so the
+   motion reads as fluid eddies rather than random wander. Dots twinkle on
+   individual phases, and the cursor stirs the field with a velocity-aware
+   push.
 
-Flight targets live in page coordinates and are drawn at `y - scrollY`, so
-assemblies stay glued to their text if you scroll mid-animation.
+2. **Assembly.** When text needs to appear, each glyph is rasterized
+   offscreen and sampled into target points (the sampling stride adapts to
+   keep an assembly under ~9,000 dots and never drain the field). Free dots
+   are claimed nearest-first, then seek their targets with damped springs
+   whose stiffness ramps in over the dot's stagger window, slightly
+   under-damped for a fluid catch. Launches run left to right, so each line
+   reads as being typed by the field. When ~72% of a character's dots have
+   settled, the real DOM character fades in underneath; its dots linger
+   130ms, puff outward, and rejoin the flow. The population is constant.
+   Nothing pops in or out.
 
-### Content model
+Targets live in page coordinates and are re-projected against `scrollY`
+every frame, so assemblies stay glued to their text while scrolling.
 
-`main.js` holds an expansion tree. Clicking a token replaces it with its
-expansion: the visited words remain (dimmed, with their icon) and the new
-words assemble from dots. Expansions can contain new tokens, so the page
-unfolds. Reloading (or the `replay` link in the footer) resets the prose;
-the click counter persists in `localStorage` like a little odometer.
+## Content model
+
+The base sentences are server-rendered (full prose ships in the HTML, so
+crawlers and no-JS readers get everything). Tokens are real `<button>`s.
+Clicking one swaps it for its expansion via React state: the visited words
+remain, dimmed with their icon, and the new words assemble from dots.
+Expansions contain new tokens, so the page unfolds. `replay` in the footer
+re-runs the intro; the click counter persists in `localStorage`.
 
 ## Accessibility and performance
 
-- All text is real DOM text: selectable, indexable, screen-reader friendly.
-  The canvas is `aria-hidden` and `pointer-events: none`.
-- Tokens are real `<button>`s: keyboard focusable, `:focus-visible` outlined.
-- `prefers-reduced-motion`: no flights, instant text, becalmed dots.
-- Any pointer press during the intro skips straight to the finished page.
-- DPR is capped at 2; the loop pauses when the tab is hidden; particle
-  budgets are enforced by `strideForBudget`.
-- No JavaScript at all? A `<noscript>` block carries the full flattened text.
+- All text is real DOM text. The canvas is `aria-hidden`, `pointer-events: none`.
+- Tokens carry pinned `aria-label`s (char-span wrapping fragments text nodes).
+- `prefers-reduced-motion` (or no WebGL): instant text, becalmed field.
+- Any pointer press during the intro skips to the finished page.
+- Device pixel ratio capped at 2; the loop pauses when the tab is hidden;
+  budgets enforced by `strideForBudget` and the free-dot count.
 
 ## Develop
 
 ```bash
-npm test          # unit tests for the pure engine logic (node --test)
-npx serve .       # or: python3 -m http.server
+npm install
+npm test         # 16 unit tests on the pure engine math
+npm run dev      # next dev
+npm run build    # type-check + static export to out/
 ```
 
 ## Deploy
 
-Static files, so any host works. For Vercel:
-
-```bash
-vercel deploy --prod
-```
-
-or import this repo at [vercel.com/new](https://vercel.com/new) (framework
-preset: Other, no build command, output directory: root).
+Vercel with the Next.js preset; `output: 'export'` produces a fully static
+site. Pushes to `main` auto-deploy via the GitHub integration.
 
 ## Credits
 

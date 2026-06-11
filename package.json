@@ -1,11 +1,30 @@
 {
   "name": "nikunjs-compendium",
-  "version": "1.0.0",
-  "description": "Nikunj's Compendium: a one-page personal site where floating dots assemble the words.",
+  "version": "2.0.0",
+  "private": true,
+  "description": "Nikunj's Compendium: a one-page personal site where a WebGL field of dots assembles the words.",
   "type": "module",
   "scripts": {
-    "test": "node --test",
-    "dev": "npx serve ."
+    "dev": "next dev",
+    "build": "next build",
+    "start": "npx serve out",
+    "test": "node --test"
+  },
+  "dependencies": {
+    "next": "^15.1.6",
+    "react": "^19.0.0",
+    "react-dom": "^19.0.0",
+    "three": "^0.172.0"
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.0",
+    "@types/react": "^19.0.0",
+    "@types/react-dom": "^19.0.0",
+    "@types/three": "^0.172.0",
+    "typescript": "^5.7.2"
+  },
+  "engines": {
+    "node": ">=20"
   },
   "license": "MIT",
   "author": "Nikunj More <nikunjmore12@gmail.com>"

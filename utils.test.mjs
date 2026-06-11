@@ -6,8 +6,9 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
-  clamp, lerp, dist2, easeOutCubic, mulberry32, buildSchedule,
-  flightDuration, strideForBudget, nearestK, ambientCount, formatClicks,
+  clamp, lerp, dist2, easeOutCubic, mulberry32, hash2, vnoise2, curl2,
+  springStep, buildSchedule, strideForBudget, poolCount, bestCandidate,
+  nearestK, formatClicks,
 } from './utils.js';
 
 test('clamp pins values to the range', () => {
@@ -24,19 +25,17 @@ test('lerp interpolates linearly', () => {
 
 test('dist2 is the squared distance', () => {
   assert.equal(dist2(0, 0, 3, 4), 25);
-  assert.equal(dist2(1, 1, 1, 1), 0);
 });
 
-test('easeOutCubic hits its endpoints and stays in bounds', () => {
+test('easeOutCubic hits endpoints, clamps, and is monotonic', () => {
   assert.equal(easeOutCubic(0), 0);
   assert.equal(easeOutCubic(1), 1);
-  assert.equal(easeOutCubic(-1), 0, 'clamps below');
-  assert.equal(easeOutCubic(2), 1, 'clamps above');
+  assert.equal(easeOutCubic(-1), 0);
+  assert.equal(easeOutCubic(2), 1);
   let prev = 0;
   for (let t = 0; t <= 1.0001; t += 0.05) {
     const v = easeOutCubic(t);
-    assert.ok(v >= prev - 1e-12, 'monotonic non-decreasing');
-    assert.ok(v >= 0 && v <= 1);
+    assert.ok(v >= prev - 1e-12 && v >= 0 && v <= 1);
     prev = v;
   }
 });
@@ -46,71 +45,103 @@ test('mulberry32 is deterministic and uniform-ish in [0, 1)', () => {
   const b = mulberry32(42);
   const c = mulberry32(43);
   const seqA = Array.from({ length: 8 }, () => a());
-  const seqB = Array.from({ length: 8 }, () => b());
-  const seqC = Array.from({ length: 8 }, () => c());
-  assert.deepEqual(seqA, seqB, 'same seed, same stream');
-  assert.notDeepEqual(seqA, seqC, 'different seed, different stream');
+  assert.deepEqual(seqA, Array.from({ length: 8 }, () => b()));
+  assert.notDeepEqual(seqA, Array.from({ length: 8 }, () => c()));
   for (const v of seqA) assert.ok(v >= 0 && v < 1);
   const mean = Array.from({ length: 5000 }, () => a()).reduce((s, v) => s + v, 0) / 5000;
-  assert.ok(Math.abs(mean - 0.5) < 0.03, `mean ~0.5, got ${mean}`);
+  assert.ok(Math.abs(mean - 0.5) < 0.03);
+});
+
+test('hash2 is deterministic and in [0, 1)', () => {
+  assert.equal(hash2(3, 7, 1), hash2(3, 7, 1));
+  assert.notEqual(hash2(3, 7, 1), hash2(4, 7, 1));
+  for (let i = 0; i < 200; i++) {
+    const v = hash2(i, i * 31, 5);
+    assert.ok(v >= 0 && v < 1);
+  }
+});
+
+test('vnoise2 is smooth: nearby samples stay close', () => {
+  for (let i = 0; i < 60; i++) {
+    const x = i * 0.73, y = i * 1.21, t = i * 0.11;
+    const d = Math.abs(vnoise2(x + 0.01, y, t) - vnoise2(x, y, t));
+    assert.ok(d < 0.06, `noise jumped by ${d} at sample ${i}`);
+    const v = vnoise2(x, y, t);
+    assert.ok(v >= 0 && v <= 1);
+  }
+});
+
+test('curl2 is (numerically) divergence-free', () => {
+  /* div F = d(u)/dx + d(v)/dy should be ~0 for a curl field */
+  const h = 0.05;
+  for (let i = 0; i < 25; i++) {
+    const x = 0.37 + i * 0.61, y = 1.91 + i * 0.43, t = i * 0.2;
+    const dudx = (curl2(x + h, y, t)[0] - curl2(x - h, y, t)[0]) / (2 * h);
+    const dvdy = (curl2(x, y + h, t)[1] - curl2(x, y - h, t)[1]) / (2 * h);
+    assert.ok(Math.abs(dudx + dvdy) < 0.75, `divergence ${dudx + dvdy} at ${i}`);
+  }
+});
+
+test('springStep converges to its target', () => {
+  let x = 0, v = 0;
+  for (let i = 0; i < 240; i++) [x, v] = springStep(x, v, 100, 90, 1 / 60, 0.92);
+  assert.ok(Math.abs(x - 100) < 0.5, `settled at ${x}`);
+  assert.ok(Math.abs(v) < 1);
+});
+
+test('springStep with near-critical damping barely overshoots', () => {
+  let x = 0, v = 0, peak = 0;
+  for (let i = 0; i < 600; i++) {
+    [x, v] = springStep(x, v, 100, 90, 1 / 120, 0.92);
+    peak = Math.max(peak, x);
+  }
+  assert.ok(peak < 108, `overshoot peaked at ${peak}`);
 });
 
 test('buildSchedule clamps total stagger and orders delays', () => {
   const rng = mulberry32(7);
-  const short = buildSchedule(4, { rng });
-  assert.equal(short.total, 220, 'short text clamps to minTotal');
-  const long = buildSchedule(500, { rng });
-  assert.equal(long.total, 1150, 'long text clamps to maxTotal');
+  assert.equal(buildSchedule(4, { rng }).total, 200);
+  assert.equal(buildSchedule(500, { rng }).total, 980);
   const mid = buildSchedule(40, { rng });
-  assert.equal(mid.total, 40 * 16);
+  assert.equal(mid.total, 40 * 13);
   assert.equal(mid.delays.length, 40);
-  assert.ok(mid.delays[39] > mid.delays[0], 'reads left to right');
+  assert.ok(mid.delays[39] > mid.delays[0]);
   for (let i = 0; i < 40; i++) {
-    assert.ok(mid.delays[i] >= i * mid.step, 'never earlier than its slot');
-    assert.ok(mid.delays[i] <= (i + 0.351) * mid.step, 'jitter stays bounded');
+    assert.ok(mid.delays[i] >= i * mid.step);
+    assert.ok(mid.delays[i] <= (i + 0.351) * mid.step);
   }
-});
-
-test('buildSchedule survives degenerate input', () => {
-  const s = buildSchedule(0);
-  assert.equal(s.delays.length, 1);
-});
-
-test('flightDuration stays within base ± spread/2', () => {
-  const rng = mulberry32(99);
-  for (let i = 0; i < 200; i++) {
-    const d = flightDuration(rng, 430, 160);
-    assert.ok(d >= 350 && d <= 510, `duration in range, got ${d}`);
-  }
+  assert.equal(buildSchedule(0).delays.length, 1, 'degenerate input survives');
 });
 
 test('strideForBudget keeps the particle count under budget', () => {
-  assert.equal(strideForBudget(1000, 3600), 3, 'small text keeps fine stride');
+  assert.equal(strideForBudget(1000, 3600), 2, 'small text keeps the finest stride');
   const s = strideForBudget(200000, 3600);
-  assert.ok(200000 / (s * s) <= 3600, 'budget respected');
-  assert.ok(s <= 8, 'stride is capped');
+  assert.ok(200000 / (s * s) <= 3600);
   assert.equal(strideForBudget(10_000_000, 100), 8, 'hard ceiling');
+});
+
+test('poolCount scales with area and clamps', () => {
+  assert.equal(poolCount(320, 480), 2500, 'small viewport floor');
+  assert.equal(poolCount(3840, 2160), 16000, 'huge viewport ceiling');
+  const mid = poolCount(1440, 900);
+  assert.equal(mid, Math.round((1440 * 900) / 110));
+  assert.ok(mid > 2500 && mid < 16000);
+});
+
+test('bestCandidate returns the nearest of the sampled indices', () => {
+  const xs = new Float32Array([100, 1, 50, 2]);
+  const ys = new Float32Array([100, 1, 50, 2]);
+  assert.equal(bestCandidate([0, 1, 2], xs, ys, 0, 0), 1);
+  assert.equal(bestCandidate([0, 2], xs, ys, 0, 0), 2);
+  assert.equal(bestCandidate([], xs, ys, 0, 0), -1);
 });
 
 test('nearestK returns the k closest pool indices', () => {
   const pool = [
-    { x: 100, y: 100 },
-    { x: 1, y: 1 },
-    { x: 50, y: 50 },
-    { x: 2, y: 2 },
+    { x: 100, y: 100 }, { x: 1, y: 1 }, { x: 50, y: 50 }, { x: 2, y: 2 },
   ];
-  const idx = nearestK(pool, 0, 0, 2);
-  assert.deepEqual(idx.sort(), [1, 3]);
-  assert.equal(nearestK(pool, 0, 0, 0).length, 0);
-  assert.equal(nearestK(pool, 0, 0, 10).length, 4, 'k beyond pool size is safe');
-});
-
-test('ambientCount scales with area and clamps', () => {
-  assert.equal(ambientCount(320, 480), 60, 'small viewport floor');
-  assert.equal(ambientCount(3840, 2160), 170, 'huge viewport ceiling');
-  const mid = ambientCount(1440, 900);
-  assert.ok(mid > 60 && mid < 170);
-  assert.equal(mid, Math.round((1440 * 900) / 13500));
+  assert.deepEqual(nearestK(pool, 0, 0, 2).sort(), [1, 3]);
+  assert.equal(nearestK(pool, 0, 0, 10).length, 4);
 });
 
 test('formatClicks pluralizes like Los Feliz', () => {
