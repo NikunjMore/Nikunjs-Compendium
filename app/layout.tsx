@@ -55,8 +55,9 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
             Science, and Applied Math. Misc: not enough second and third order
             thinking in the world, so I made a program to help you with yours;
             vitamin D3, bouldering, pickleball, random endeavors with friends,
-            and Coke Zero. Find me in the Bay Area or via email:
-            nikunjmore12@gmail.com / nikunj.more@berkeley.edu.
+            and Coke Zero. Find me in the Bay Area, on LinkedIn
+            (linkedin.com/in/nikunj-more), by phone at (650) 880-9285, or via
+            email: nikunjmore12@gmail.com / nikunj.more@berkeley.edu.
           </div>
         </noscript>
       </body>

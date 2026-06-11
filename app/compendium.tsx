@@ -127,16 +127,29 @@ export default function Compendium() {
     },
   }), [open, bump]);
 
+  /*
+   * The field and the layout both respond to how unfolded the page is:
+   * the dot crowd thins toward silence as every token opens, and the
+   * vertical rhythm compresses from roomy (collapsed fills the screen)
+   * to tight (fully expanded still fits the screen).
+   */
+  const TOTAL_TOKENS = 17;
+  const openness = Math.min(1, open.size / TOTAL_TOKENS);
+  const rhythm = 2.2 - openness * 1.25;
+
+  useEffect(() => {
+    engineRef.current?.setCrowd(1 - openness);
+  }, [openness]);
+
   return (
     <Ctx.Provider value={api}>
       <canvas id="dots" ref={canvasRef} aria-hidden="true" />
 
-      <main ref={rootRef}>
+      <main ref={rootRef} style={{ ['--r' as string]: String(rhythm) } as React.CSSProperties}>
         <header>
           <h1 data-block><T text="Nikunj’s Compendium" /></h1>
           <div data-block>
             <p className="byline"><T text="by Nikunj More · Bay Area" /></p>
-            <p className="hint"><T text="(click the grey boxes)" /></p>
           </div>
         </header>
 
@@ -199,6 +212,11 @@ export default function Compendium() {
             <T text="You can find me in the " />
             <strong><T text="Bay Area" /></strong>
             <Ic n="pin" />
+            <T text=", on " />
+            <a href="https://www.linkedin.com/in/nikunj-more/" target="_blank" rel="noopener noreferrer">
+              <T text="LinkedIn" />
+            </a>
+            <Ic n="ext" />
             <T text=", or via " />
             <Tok id="email" label="email" />
             <T text="." />

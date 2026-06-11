@@ -219,6 +219,8 @@ export const EXP: Record<string, ReactNode> = {
       <A text="nikunjmore12@gmail.com" href="mailto:nikunjmore12@gmail.com" />
       <T text=" or " />
       <A text="nikunj.more@berkeley.edu" href="mailto:nikunj.more@berkeley.edu" />
+      <T text=", or by phone at " />
+      <A text="(650) 880-9285" href="tel:+16508809285" />
     </>
   ),
 };

@@ -22,8 +22,8 @@
 
 import * as THREE from 'three';
 import {
-  clamp, mulberry32, curl2, buildSchedule, strideForBudget,
-  poolCount, bestCandidate,
+  clamp, dist2, mulberry32, curl2, buildSchedule, strideForBudget,
+  poolCount,
 } from '../utils.js';
 
 const TAU = Math.PI * 2;
@@ -33,6 +33,7 @@ const FREE = 0;
 const SEEK = 1;
 const LOCK = 2;
 const RELEASE = 3;
+const DEAD = 4; /* spent building text; the field thins as the page fills */
 
 type Rec = {
   el: Element;
@@ -106,6 +107,7 @@ export class DotEngine {
   private lt = 0;
   private raf = 0;
   private pausedAt = 0;
+  private crowd = 1; /* 1 = full field (nothing expanded), 0 = silent page */
 
   readonly reduced: boolean;
   readonly ok: boolean;
@@ -274,10 +276,16 @@ export class DotEngine {
 
     const { px, py, vx, vy, st, alpha } = this;
     const pvx = this.pointerVX, pvy = this.pointerVY;
-    const stir = 60 + Math.min(220, Math.hypot(pvx, pvy) * 14);
+    const stir = 150 + Math.min(450, Math.hypot(pvx, pvy) * 24);
 
     for (let i = 0; i < this.N; i++) {
       const s = st[i];
+
+      if (s === DEAD) {
+        /* absorbed into the text: fade out in place and rest */
+        if (alpha[i] > 0.001) alpha[i] += (0 - alpha[i]) * Math.min(1, dt * 5);
+        continue;
+      }
 
       if (s === SEEK && now >= this.seekT[i]) {
         /* damped spring with stiffness ramping in over 240ms */
@@ -307,12 +315,8 @@ export class DotEngine {
         px[i] = this.tx[i] + Math.sin(this.seed[i] * 43 + t * 2.1) * 0.3;
         py[i] = (this.ty[i] - sy) + Math.cos(this.seed[i] * 57 + t * 1.7) * 0.3;
         if (r.done && now >= r.fadeAt) {
-          st[i] = RELEASE;
-          this.relT[i] = now;
-          const a = this.rng() * TAU;
-          const sp = 24 + this.rng() * 46;
-          vx[i] = Math.cos(a) * sp;
-          vy[i] = Math.sin(a) * sp - 8;
+          /* the character is real now; this dot is spent */
+          st[i] = DEAD;
         }
         alpha[i] += (0.92 - alpha[i]) * Math.min(1, dt * 8);
         continue;
@@ -325,15 +329,15 @@ export class DotEngine {
       vx[i] += (u * speed - vx[i]) * blend;
       vy[i] += (v * speed - vy[i]) * blend;
 
-      /* the cursor stirs the field */
+      /* the cursor stirs the field, hard and fast */
       const mdx = px[i] - this.pointerX;
       const mdy = py[i] - this.pointerY;
       const md2 = mdx * mdx + mdy * mdy;
-      if (md2 < 12100 && md2 > 0.01) {
+      if (md2 < 16900 && md2 > 0.01) {
         const md = Math.sqrt(md2);
-        const f = (1 - md / 110) * stir * dt;
-        vx[i] += (mdx / md) * f + pvx * 0.4 * dt;
-        vy[i] += (mdy / md) * f + pvy * 0.4 * dt;
+        const f = (1 - md / 130) * stir * dt;
+        vx[i] += (mdx / md) * f + pvx * 0.7 * dt;
+        vy[i] += (mdy / md) * f + pvy * 0.7 * dt;
       }
 
       px[i] += vx[i] * dt;
@@ -343,9 +347,11 @@ export class DotEngine {
 
       if (s === RELEASE && now - this.relT[i] > 420) st[i] = FREE;
 
+      /* the crowd thins as the compendium unfolds */
+      const visible = this.seed[i] <= this.crowd ? 1 : 0;
       const tw = 0.62 + 0.38 * Math.sin(this.seed[i] * TAU + t * (0.6 + this.seed[i] * 1.6));
-      const target = this.baseA[i] * tw * this.fade;
-      alpha[i] += (target - alpha[i]) * Math.min(1, dt * (s === RELEASE ? 3 : 6));
+      const target = this.baseA[i] * tw * this.fade * visible;
+      alpha[i] += (target - alpha[i]) * Math.min(1, dt * (s === RELEASE ? 3 : 4));
     }
 
     /* push to GPU */
@@ -398,15 +404,62 @@ export class DotEngine {
     return rec;
   }
 
-  /* claim the nearest free dot of a small random sample */
-  private takeParticle(x: number, y: number): number {
-    const cand: number[] = [];
-    for (let tries = 0; tries < 24 && cand.length < 5; tries++) {
-      const i = (this.rng() * this.N) | 0;
+  /*
+   * Build a one-shot spatial grid of the free dots currently on screen and
+   * return a claimer that always takes the genuinely NEAREST one, so words
+   * are visibly built from the actual dots around them. Claimed dots are
+   * removed from their bucket; the search widens ring by ring when a
+   * neighborhood runs dry.
+   */
+  private makeClaimer(): (x: number, y: number) => number {
+    const cell = 90;
+    const cols = Math.max(1, Math.ceil(this.w / cell));
+    const rows = Math.max(1, Math.ceil(this.h / cell));
+    const buckets: number[][] = Array.from({ length: cols * rows }, () => []);
+    for (let i = 0; i < this.N; i++) {
       const s = this.st[i];
-      if (s === FREE || s === RELEASE) cand.push(i);
+      if (s !== FREE && s !== RELEASE) continue;
+      const cx = clamp(Math.floor(this.px[i] / cell), 0, cols - 1);
+      const cy = clamp(Math.floor(this.py[i] / cell), 0, rows - 1);
+      buckets[cy * cols + cx].push(i);
     }
-    return bestCandidate(cand, this.px, this.py, x, y);
+    const maxRing = Math.max(cols, rows);
+    return (x: number, y: number) => {
+      const cx = clamp(Math.floor(x / cell), 0, cols - 1);
+      const cy = clamp(Math.floor(y / cell), 0, rows - 1);
+      for (let ring = 0; ring <= maxRing; ring++) {
+        let best = -1;
+        let bd = Infinity;
+        let bb: number[] | null = null;
+        let bk = -1;
+        for (let dy = -ring; dy <= ring; dy++) {
+          for (let dx = -ring; dx <= ring; dx++) {
+            if (Math.max(Math.abs(dx), Math.abs(dy)) !== ring) continue;
+            const gx = cx + dx;
+            const gy = cy + dy;
+            if (gx < 0 || gy < 0 || gx >= cols || gy >= rows) continue;
+            const b = buckets[gy * cols + gx];
+            for (let k = 0; k < b.length; k++) {
+              const i = b[k];
+              const d = dist2(this.px[i], this.py[i], x, y);
+              if (d < bd) { bd = d; best = i; bb = b; bk = k; }
+            }
+          }
+        }
+        if (best >= 0 && bb) {
+          bb[bk] = bb[bb.length - 1];
+          bb.pop();
+          return best;
+        }
+      }
+      return -1;
+    };
+  }
+
+  /* How much of the field is still alive (not spent on text). */
+  setCrowd(c: number) {
+    this.crowd = clamp(c, 0, 1);
+    this.kick();
   }
 
   private countFree(): number {
@@ -455,6 +508,7 @@ export class DotEngine {
     const budget = clamp(Math.floor(free * 0.8), 600, 9000);
     const stride = strideForBudget(est, budget);
     const sx0 = scrollX, sy0 = scrollY;
+    const claim = this.makeClaimer();
 
     for (const it of items) {
       const font = this.fontOf(it.el.parentElement ?? it.el);
@@ -473,7 +527,7 @@ export class DotEngine {
       for (const [gx, gy] of glyph.pts) {
         const txp = it.rect.left + sx0 + gx + (rng() - 0.5) * 0.7;
         const typ = it.rect.top + sy0 + gy * scaleY + (rng() - 0.5) * 0.7;
-        const pi = this.takeParticle(txp, typ - sy0);
+        const pi = claim(txp, typ - sy0);
         if (pi < 0) { rec.need--; continue; }
         this.st[pi] = SEEK;
         this.tx[pi] = txp;
@@ -509,10 +563,8 @@ export class DotEngine {
     }
     for (let i = 0; i < this.N; i++) {
       if (this.st[i] === SEEK || this.st[i] === LOCK) {
-        this.st[i] = RELEASE;
-        this.relT[i] = now;
-        this.vx[i] = (this.rng() - 0.5) * 60;
-        this.vy[i] = (this.rng() - 0.5) * 60;
+        /* the text they were building is real now; they are spent */
+        this.st[i] = DEAD;
       }
     }
   }
