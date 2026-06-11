@@ -22,7 +22,7 @@
 
 import * as THREE from 'three';
 import {
-  clamp, dist2, mulberry32, curl2, buildSchedule, strideForBudget,
+  clamp, mulberry32, curl2, buildSchedule, strideForBudget,
   poolCount,
 } from '../utils.js';
 
@@ -315,8 +315,22 @@ export class DotEngine {
         px[i] = this.tx[i] + Math.sin(this.seed[i] * 43 + t * 2.1) * 0.3;
         py[i] = (this.ty[i] - sy) + Math.cos(this.seed[i] * 57 + t * 1.7) * 0.3;
         if (r.done && now >= r.fadeAt) {
-          /* the character is real now; this dot is spent */
-          st[i] = DEAD;
+          /*
+           * The character is real now. Some of these dots are spent for
+           * good (the field thins as the page fills), the rest slip back
+           * into the flow so there are always enough for the next box.
+           * The crowd dial still takes the field to silence at the end.
+           */
+          if (this.rng() < 0.45) {
+            st[i] = DEAD;
+          } else {
+            st[i] = RELEASE;
+            this.relT[i] = now;
+            const a2 = this.rng() * TAU;
+            const sp = 20 + this.rng() * 40;
+            vx[i] = Math.cos(a2) * sp;
+            vy[i] = Math.sin(a2) * sp - 6;
+          }
         }
         alpha[i] += (0.92 - alpha[i]) * Math.min(1, dt * 8);
         continue;
@@ -405,55 +419,24 @@ export class DotEngine {
   }
 
   /*
-   * Build a one-shot spatial grid of the free dots currently on screen and
-   * return a claimer that always takes the genuinely NEAREST one, so words
-   * are visibly built from the actual dots around them. Claimed dots are
-   * removed from their bucket; the search widens ring by ring when a
-   * neighborhood runs dry.
+   * Order the free dots by jittered distance to the expansion's origin (the
+   * box that was clicked). Claiming pops from this order, so the field
+   * visibly drains as a soft radius around the click rather than in rows.
+   * The jitter keeps the pull organic instead of a perfect expanding circle.
    */
-  private makeClaimer(): (x: number, y: number) => number {
-    const cell = 90;
-    const cols = Math.max(1, Math.ceil(this.w / cell));
-    const rows = Math.max(1, Math.ceil(this.h / cell));
-    const buckets: number[][] = Array.from({ length: cols * rows }, () => []);
+  private makeClaimer(ox: number, oy: number): () => number {
+    const order: number[] = [];
     for (let i = 0; i < this.N; i++) {
       const s = this.st[i];
-      if (s !== FREE && s !== RELEASE) continue;
-      const cx = clamp(Math.floor(this.px[i] / cell), 0, cols - 1);
-      const cy = clamp(Math.floor(this.py[i] / cell), 0, rows - 1);
-      buckets[cy * cols + cx].push(i);
+      if (s === FREE || s === RELEASE) order.push(i);
     }
-    const maxRing = Math.max(cols, rows);
-    return (x: number, y: number) => {
-      const cx = clamp(Math.floor(x / cell), 0, cols - 1);
-      const cy = clamp(Math.floor(y / cell), 0, rows - 1);
-      for (let ring = 0; ring <= maxRing; ring++) {
-        let best = -1;
-        let bd = Infinity;
-        let bb: number[] | null = null;
-        let bk = -1;
-        for (let dy = -ring; dy <= ring; dy++) {
-          for (let dx = -ring; dx <= ring; dx++) {
-            if (Math.max(Math.abs(dx), Math.abs(dy)) !== ring) continue;
-            const gx = cx + dx;
-            const gy = cy + dy;
-            if (gx < 0 || gy < 0 || gx >= cols || gy >= rows) continue;
-            const b = buckets[gy * cols + gx];
-            for (let k = 0; k < b.length; k++) {
-              const i = b[k];
-              const d = dist2(this.px[i], this.py[i], x, y);
-              if (d < bd) { bd = d; best = i; bb = b; bk = k; }
-            }
-          }
-        }
-        if (best >= 0 && bb) {
-          bb[bk] = bb[bb.length - 1];
-          bb.pop();
-          return best;
-        }
-      }
-      return -1;
-    };
+    const score = new Float32Array(this.N);
+    for (const i of order) {
+      score[i] = Math.hypot(this.px[i] - ox, this.py[i] - oy) + this.rng() * 170;
+    }
+    order.sort((a, b) => score[a] - score[b]);
+    let ptr = 0;
+    return () => (ptr < order.length ? order[ptr++] : -1);
   }
 
   /* How much of the field is still alive (not spent on text). */
@@ -477,7 +460,11 @@ export class DotEngine {
    * block is legible. Under reduced motion (or without WebGL) it reveals
    * instantly.
    */
-  assemble(root: HTMLElement, { delay = 0, perChar = 12 }: { delay?: number; perChar?: number } = {}): Promise<void> {
+  assemble(root: HTMLElement, { delay = 0, perChar = 12, origin }: {
+    delay?: number;
+    perChar?: number;
+    origin?: { x: number; y: number };
+  } = {}): Promise<void> {
     const spans = Array.from(root.querySelectorAll<HTMLElement>('span.ch:not(.on)'));
     if (!spans.length) return Promise.resolve();
     if (!this.ok) {
@@ -505,10 +492,15 @@ export class DotEngine {
     if (!items.length) return Promise.resolve();
 
     const free = this.countFree();
-    const budget = clamp(Math.floor(free * 0.8), 600, 9000);
+    /* never blow the whole field on one assembly; later boxes need dots too */
+    const budget = clamp(Math.floor(free * 0.55), 900, 6000);
     const stride = strideForBudget(est, budget);
     const sx0 = scrollX, sy0 = scrollY;
-    const claim = this.makeClaimer();
+    const rootRect = root.getBoundingClientRect();
+    const claim = this.makeClaimer(
+      origin?.x ?? rootRect.left + rootRect.width / 2,
+      origin?.y ?? rootRect.top + rootRect.height / 2,
+    );
 
     for (const it of items) {
       const font = this.fontOf(it.el.parentElement ?? it.el);
@@ -527,7 +519,7 @@ export class DotEngine {
       for (const [gx, gy] of glyph.pts) {
         const txp = it.rect.left + sx0 + gx + (rng() - 0.5) * 0.7;
         const typ = it.rect.top + sy0 + gy * scaleY + (rng() - 0.5) * 0.7;
-        const pi = claim(txp, typ - sy0);
+        const pi = claim();
         if (pi < 0) { rec.need--; continue; }
         this.st[pi] = SEEK;
         this.tx[pi] = txp;
@@ -563,8 +555,14 @@ export class DotEngine {
     }
     for (let i = 0; i < this.N; i++) {
       if (this.st[i] === SEEK || this.st[i] === LOCK) {
-        /* the text they were building is real now; they are spent */
-        this.st[i] = DEAD;
+        if (this.rng() < 0.45) {
+          this.st[i] = DEAD;
+        } else {
+          this.st[i] = RELEASE;
+          this.relT[i] = now;
+          this.vx[i] = (this.rng() - 0.5) * 60;
+          this.vy[i] = (this.rng() - 0.5) * 60;
+        }
       }
     }
   }

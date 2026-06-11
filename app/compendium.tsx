@@ -123,7 +123,12 @@ export default function Compendium() {
       setOpen((prev) => new Set(prev).add(id));
     },
     assembleNode: (el) => {
-      void engineRef.current?.assemble(el, { perChar: 13 });
+      /* drain the field radially around the box that was clicked */
+      const r = el.getBoundingClientRect();
+      void engineRef.current?.assemble(el, {
+        perChar: 13,
+        origin: { x: r.left + r.width / 2, y: r.top + r.height / 2 },
+      });
     },
   }), [open, bump]);
 
