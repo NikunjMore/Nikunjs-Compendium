@@ -14,7 +14,7 @@
  */
 
 import {
-  createContext, useContext, useLayoutEffect, useRef,
+  createContext, memo, useContext, useLayoutEffect, useRef,
   type ReactNode,
 } from 'react';
 import { Ic } from './icons';
@@ -32,9 +32,19 @@ export function chSpans(text: string): string {
   return out;
 }
 
-export function T({ text }: { text: string }) {
-  return <span dangerouslySetInnerHTML={{ __html: chSpans(text) }} />;
-}
+/*
+ * memo is load-bearing here: with identical props React bails out before
+ * touching this subtree on every re-render, so the engine's char spans (and
+ * their revealed state) can never be reset by parent state changes.
+ */
+export const T = memo(function T({ text }: { text: string }) {
+  return (
+    <span
+      suppressHydrationWarning
+      dangerouslySetInnerHTML={{ __html: chSpans(text) }}
+    />
+  );
+});
 
 export const B = ({ text }: { text: string }) => <strong><T text={text} /></strong>;
 

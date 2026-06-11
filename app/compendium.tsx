@@ -49,6 +49,28 @@ export default function Compendium() {
     introRan.current = true;
     let cancelled = false;
 
+    /*
+     * Safety net of last resort: if any framework re-render ever re-creates
+     * char spans (wiping their revealed state), reveal the newcomers after a
+     * grace period. Fresh expansions animate well before 5s, so this never
+     * interferes with the dots; it only guarantees text can never stay
+     * invisible.
+     */
+    const net = new MutationObserver((muts) => {
+      for (const m of muts) {
+        for (const n of Array.from(m.addedNodes)) {
+          if (!(n instanceof HTMLElement)) continue;
+          const spans = n.matches('span.ch')
+            ? [n]
+            : Array.from(n.querySelectorAll<HTMLElement>('span.ch:not(.on)'));
+          for (const s of spans) {
+            setTimeout(() => s.classList.add('on'), 5000);
+          }
+        }
+      }
+    });
+    if (rootRef.current) net.observe(rootRef.current, { childList: true, subtree: true });
+
     const run = async () => {
       /*
        * Let hydration fully settle (double rAF) before sampling the DOM, so
@@ -89,7 +111,7 @@ export default function Compendium() {
     };
 
     void run();
-    return () => { cancelled = true; };
+    return () => { cancelled = true; net.disconnect(); };
   }, []);
 
   const api = useMemo<CompendiumApi>(() => ({
