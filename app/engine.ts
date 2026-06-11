@@ -484,7 +484,16 @@ export class DotEngine {
     }
 
     this.kick();
-    return new Promise((res) => setTimeout(res, delay + sched.total + 950));
+    return new Promise((res) => setTimeout(() => {
+      /*
+       * Safety net: reveal by live query at settle time. If any rec ref went
+       * stale (e.g. hydration swapped nodes under us), the text still lands.
+       */
+      for (const el of Array.from(root.querySelectorAll<HTMLElement>('span.ch:not(.on)'))) {
+        el.classList.add('on');
+      }
+      res();
+    }, delay + sched.total + 950));
   }
 
   /* Instantly reveal everything in flight (intro skip). */

@@ -47,35 +47,49 @@ export default function Compendium() {
   useEffect(() => {
     if (introRan.current || !canvasRef.current || !rootRef.current) return;
     introRan.current = true;
+    let cancelled = false;
 
-    const reduced = matchMedia('(prefers-reduced-motion: reduce)').matches;
-    document.documentElement.classList.add(reduced ? 'reduced' : 'anim');
-    const engine = getEngine(canvasRef.current, reduced);
-    engineRef.current = engine;
+    const run = async () => {
+      /*
+       * Let hydration fully settle (double rAF) before sampling the DOM, so
+       * the engine holds references to the final nodes, not ones React might
+       * still replace while it boots.
+       */
+      await new Promise<void>((r) => requestAnimationFrame(() => requestAnimationFrame(() => r())));
+      if (cancelled || !canvasRef.current || !rootRef.current) return;
 
-    const root = rootRef.current;
-    const blocks = Array.from(root.querySelectorAll<HTMLElement>('[data-block]'));
+      const reduced = matchMedia('(prefers-reduced-motion: reduce)').matches;
+      document.documentElement.classList.add(reduced ? 'reduced' : 'anim');
+      const engine = getEngine(canvasRef.current, reduced);
+      engineRef.current = engine;
 
-    const showChrome = () => setSettled(true);
+      const root = rootRef.current;
+      const blocks = Array.from(root.querySelectorAll<HTMLElement>('[data-block]'));
 
-    if (!engine.ok) {
-      for (const b of blocks) void engine.assemble(b);
-      showChrome();
-      return;
-    }
+      const showChrome = () => setSettled(true);
 
-    const seq: Promise<void>[] = [];
-    let t = 240;
-    for (const b of blocks) {
-      const isTitle = b.tagName === 'H1';
-      seq.push(engine.assemble(b, { delay: t, perChar: isTitle ? 26 : 11 }));
-      t += isTitle ? 480 : 210;
-    }
-    setTimeout(showChrome, Math.min(t + 250, 2400));
+      if (!engine.ok) {
+        for (const b of blocks) void engine.assemble(b);
+        showChrome();
+        return;
+      }
 
-    const skip = () => engine.finishAll();
-    addEventListener('pointerdown', skip, { once: true });
-    void Promise.all(seq).then(() => removeEventListener('pointerdown', skip));
+      const seq: Promise<void>[] = [];
+      let t = 240;
+      for (const b of blocks) {
+        const isTitle = b.tagName === 'H1';
+        seq.push(engine.assemble(b, { delay: t, perChar: isTitle ? 26 : 11 }));
+        t += isTitle ? 480 : 210;
+      }
+      setTimeout(showChrome, Math.min(t + 250, 2400));
+
+      const skip = () => engine.finishAll();
+      addEventListener('pointerdown', skip, { once: true });
+      void Promise.all(seq).then(() => removeEventListener('pointerdown', skip));
+    };
+
+    void run();
+    return () => { cancelled = true; };
   }, []);
 
   const api = useMemo<CompendiumApi>(() => ({
