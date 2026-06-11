@@ -128,6 +128,8 @@ function renderSegs(segs) {
       btn.className = 'tok';
       btn.dataset.k = s.id;
       btn.textContent = s.label;
+      /* char spans fragment the text node, so pin the accessible name */
+      btn.setAttribute('aria-label', `${s.label} (expand)`);
       frag.appendChild(btn);
     } else if (s.kind === 'a') {
       const a = document.createElement('a');
@@ -181,6 +183,9 @@ function bump() {
 function wireTokens(scope) {
   for (const btn of scope.querySelectorAll('.tok:not([data-wired])')) {
     btn.dataset.wired = '1';
+    if (!btn.hasAttribute('aria-label')) {
+      btn.setAttribute('aria-label', `${btn.textContent.trim()} (expand)`);
+    }
     btn.addEventListener('click', () => expand(btn));
   }
 }
