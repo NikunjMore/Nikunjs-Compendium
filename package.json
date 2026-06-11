@@ -1,0 +1,12 @@
+{
+  "name": "nikunjs-compendium",
+  "version": "1.0.0",
+  "description": "Nikunj's Compendium: a one-page personal site where floating dots assemble the words.",
+  "type": "module",
+  "scripts": {
+    "test": "node --test",
+    "dev": "npx serve ."
+  },
+  "license": "MIT",
+  "author": "Nikunj More <nikunjmore12@gmail.com>"
+}
