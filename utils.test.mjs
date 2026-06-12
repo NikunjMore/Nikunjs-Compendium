@@ -8,7 +8,7 @@ import assert from 'node:assert/strict';
 import {
   clamp, lerp, dist2, easeOutCubic, mulberry32, hash2, vnoise2, curl2,
   springStep, buildSchedule, strideForBudget, poolCount, bestCandidate,
-  nearestK, formatClicks,
+  nearestK, formatClicks, waveField,
 } from './utils.js';
 
 test('clamp pins values to the range', () => {
@@ -148,4 +148,43 @@ test('formatClicks pluralizes like Los Feliz', () => {
   assert.equal(formatClicks(0), '0 CLICKS');
   assert.equal(formatClicks(1), '1 CLICK');
   assert.equal(formatClicks(378), '378 CLICKS');
+});
+
+test('waveField is deterministic and bounded', () => {
+  const [u1, v1, c1] = waveField(100, 200, 3);
+  const [u2, v2, c2] = waveField(100, 200, 3);
+  assert.deepEqual([u1, v1, c1], [u2, v2, c2]);
+  const lim = 26 * (1 + 0.35 + 0.45) + 1e-9;
+  for (let i = 0; i < 400; i++) {
+    const [u, v, c] = waveField(i * 37.7, i * 91.3, i * 0.21);
+    assert.ok(Math.abs(u) <= lim && Math.abs(v) <= lim);
+    assert.ok(c >= -1 && c <= 1);
+  }
+});
+
+test('waveField repeats one wavelength along the travel direction', () => {
+  const o = { chop: 0 };
+  const th = 0.6435011087932844;
+  const dx = Math.cos(th) * 440;
+  const dy = Math.sin(th) * 440;
+  const a = waveField(50, 80, 2, o);
+  const b = waveField(50 + dx, 80 + dy, 2, o);
+  assert.ok(Math.abs(a[0] - b[0]) < 1e-6 && Math.abs(a[1] - b[1]) < 1e-6);
+});
+
+test('waveField travels: riding a crest keeps the phase', () => {
+  const o = { chop: 0 };
+  const th = 0.6435011087932844;
+  const dt = 1.7;
+  const a = waveField(120, 40, 1, o);
+  const b = waveField(120 + Math.cos(th) * 90 * dt, 40 + Math.sin(th) * 90 * dt, 1 + dt, o);
+  assert.ok(Math.abs(a[2] - b[2]) < 1e-6);
+});
+
+test('waveField is periodic in time', () => {
+  const o = { chop: 0 };
+  const T = 440 / 90;
+  const a = waveField(300, 500, 4, o);
+  const b = waveField(300, 500, 4 + T, o);
+  assert.ok(Math.abs(a[0] - b[0]) < 1e-6 && Math.abs(a[1] - b[1]) < 1e-6);
 });

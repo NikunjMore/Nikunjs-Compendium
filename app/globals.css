@@ -1,18 +1,18 @@
 /*
- * globals.css  v3
+ * globals.css  v4
  * Monotone: blacks, greys, whites.  Grey boxes mark clickable tokens.
- * The portrait lives right of the 790 px column; photo.ts mirrors this.
+ * The portrait lives right of the 790 px column on desktop; on small
+ * screens it fills the in-flow #photo-slot instead. photo.ts mirrors this.
  *
  * Layout goals
- * ─────────────
+ * ────────────
  * • Fully-expanded page fits one screen on laptop/desktop — no scroll.
- * • Portrait scales with the viewport; it shows down to ~900 px wide.
- * • Mobile (<700 px wide, or <620 px tall) scrolls freely.
- *
- * The --r rhythm variable (controlled by React) shrinks inter-section
- * spacing as tokens open so the page stays exactly one viewport tall.
- * Aggressive font-size media queries provide the remaining headroom on
- * very short screens.
+ *   Two knobs, both solved by React per state/viewport:
+ *     --r   rhythm  [0.62 – 3.6]  inter-section breathing room
+ *     --fs  type    [0.74 – 1]    last-resort font scale when --r bottoms out
+ * • Portrait scales with the viewport in both modes.
+ * • Mobile (<700 px wide, or short-and-narrow) scrolls freely and shows
+ *   the portrait inline at the top, scaled to the screen.
  */
 
 :root {
@@ -25,6 +25,8 @@
   --box-hover:#232323;
   --mono:     ui-monospace, "SF Mono", SFMono-Regular, Menlo, Consolas, monospace;
   --spring:   cubic-bezier(0.16, 1, 0.3, 1);
+  --base:     16.5px;
+  --lh:       1.7;
 }
 
 * { box-sizing: border-box; }
@@ -40,8 +42,8 @@ body {
   height:    100%;
   background: var(--bg);
   color:     var(--fg);
-  font-size: 16.5px;
-  line-height: 1.7;
+  font-size: calc(var(--fs, 1) * var(--base));
+  line-height: var(--lh);
   -webkit-font-smoothing: antialiased;
   text-rendering: optimizeLegibility;
   /* prevent scroll on desktop; mobile/small screens override below */
@@ -70,9 +72,9 @@ body::before {
 }
 
 /*
- * --r: breathing rhythm [0.85 – 3.6].  React solves for the value that
- * makes the column exactly fill innerHeight.  Transitions ease in after
- * the rhythm probe frame.
+ * --r: breathing rhythm.  React solves for the value that makes the column
+ * exactly fill innerHeight; --fs kicks in only when --r alone cannot.
+ * Transitions ease in after the rhythm probe frame.
  */
 main {
   position: relative;
@@ -86,9 +88,12 @@ main {
 main.measuring,
 main.measuring * { transition: none !important; }
 
+/* ---- the portrait's in-flow home on small screens ---------------------- */
+#photo-slot { display: none; }
+
 /* ---- header ------------------------------------------------------------ */
 h1 {
-  font-size:      clamp(28px, 4.6vh, 40px);
+  font-size:      calc(var(--fs, 1) * clamp(28px, 4.6vh, 40px));
   font-weight:    700;
   letter-spacing: -0.02em;
   line-height:    1.1;
@@ -97,7 +102,7 @@ h1 {
 
 /* ---- sections ---------------------------------------------------------- */
 .hdr {
-  font-size:   16.5px;
+  font-size:   calc(var(--fs, 1) * var(--base));
   font-weight: 650;
   color:       #e9e9e9;
   margin: calc(var(--r, 1.4) * 14px) 0 calc(var(--r, 1.4) * 3px);
@@ -223,38 +228,43 @@ footer a:hover { color: #ffffff; }
   color: var(--dim);
 }
 
-/* ---- medium screens: font-size tier 2 --------------------------------- */
+/* ---- medium screens: base-size tier 2 ---------------------------------- */
 /* 1366×768 laptops, medium MacBooks */
 @media (max-height: 860px) and (min-width: 700px) {
-  body { font-size: 15.5px; line-height: 1.6; }
-  h1   { font-size: clamp(26px, 4.2vh, 34px); }
-  .hdr { font-size: 15.5px; }
+  :root { --base: 15.5px; --lh: 1.6; }
+  h1    { font-size: calc(var(--fs, 1) * clamp(26px, 4.2vh, 34px)); }
 }
 
-/* ---- short screens: font-size tier 3 ---------------------------------- */
+/* ---- short screens: base-size tier 3 ----------------------------------- */
 /* 768 px tall: fully-expanded page must still fit */
 @media (max-height: 800px) and (min-width: 700px) {
-  body { font-size: 14.5px; line-height: 1.52; }
-  h1   { font-size: clamp(23px, 3.6vh, 30px); }
-  .hdr { font-size: 14.5px; }
+  :root { --base: 14.5px; --lh: 1.52; }
+  h1    { font-size: calc(var(--fs, 1) * clamp(23px, 3.6vh, 30px)); }
 }
 
-/* ---- very short screens: tier 4 --------------------------------------- */
+/* ---- very short screens: tier 4 ----------------------------------------- */
 @media (max-height: 700px) and (min-width: 700px) {
-  body { font-size: 13.5px; line-height: 1.46; }
-  h1   { font-size: clamp(21px, 3.2vh, 26px); }
-  .hdr { font-size: 13.5px; }
-  main { padding-left: clamp(20px, 3vw, 36px); padding-right: 24px; }
+  :root { --base: 13.5px; --lh: 1.46; }
+  h1    { font-size: calc(var(--fs, 1) * clamp(21px, 3.2vh, 26px)); }
+  main  { padding-left: clamp(20px, 3vw, 36px); padding-right: 24px; }
 }
 
-/* ---- mobile: restore scroll, reset overflow --------------------------- */
+/* ---- mobile: restore scroll, inline scaled portrait --------------------- */
 @media (max-width: 700px),
        (max-height: 620px) and (max-width: 900px) {
   body  { overflow: auto; font-size: 16px; line-height: 1.75; }
-  main  { padding: 48px 20px 36px; }
-  .hdr  { margin: 28px 0 5px; }
+  main  { padding: 28px 20px 36px; }
+  .hdr  { margin: 28px 0 5px; font-size: 16px; }
+  h1    { font-size: clamp(28px, 8vw, 36px); }
   p     { margin: 8px 0; }
   .tok  { padding: 0 6px 1px; }
+  /* the portrait drops inline under the title, scaled to the screen */
+  #photo-slot {
+    display: block;
+    width:  min(62vw, 300px);
+    aspect-ratio: 887 / 1200;
+    margin: 18px auto 10px;
+  }
   footer {
     flex-direction: column;
     align-items:    flex-start;

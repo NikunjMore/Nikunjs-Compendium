@@ -146,3 +146,44 @@ export function nearestK(pool, x, y, k) {
 export function formatClicks(n) {
   return `${n} CLICK${n === 1 ? '' : 'S'}`;
 }
+
+/* ---------------- ocean swell ---------------- */
+
+/*
+ * waveField: a diagonal travelling swell, like open water seen from above.
+ * Two superposed sine waves move along `theta`; particle velocity follows
+ * the orbital motion of deep-water waves (along-travel component in phase,
+ * perpendicular component 90 degrees out of phase), so dots roll in bands
+ * that sweep diagonally across the screen instead of wandering.
+ *
+ * Returns [u, v, crest]: a velocity in px/s and the primary wave phase
+ * (sin, in [-1, 1]) so callers can sparkle dots on the crests.
+ */
+export function waveField(x, y, t, {
+  theta  = 0.6435011087932844, /* travel direction ~37 deg: top-left -> bottom-right */
+  lambda = 440,                /* primary wavelength, px                              */
+  speed  = 90,                 /* crest speed, px/s                                   */
+  amp    = 26,                 /* velocity amplitude, px/s                            */
+  chop   = 0.45,               /* secondary chop wave, fraction of amp                */
+} = {}) {
+  const dx = Math.cos(theta);
+  const dy = Math.sin(theta);
+  const k  = (Math.PI * 2) / lambda;
+  const w  = k * speed;
+  const p1 = k * (x * dx + y * dy) - w * t;
+  const s1 = Math.sin(p1);
+  const c1 = Math.cos(p1);
+  let u = dx * s1 * amp - dy * c1 * amp * 0.35;
+  let v = dy * s1 * amp + dx * c1 * amp * 0.35;
+  if (chop > 0) {
+    const th2 = theta + 0.42;
+    const dx2 = Math.cos(th2);
+    const dy2 = Math.sin(th2);
+    const k2  = k * 2.15;
+    const w2  = k2 * speed * 0.62;
+    const s2  = Math.sin(k2 * (x * dx2 + y * dy2) - w2 * t + 1.7);
+    u += dx2 * s2 * amp * chop;
+    v += dy2 * s2 * amp * chop;
+  }
+  return [u, v, s1];
+}

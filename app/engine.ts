@@ -1,20 +1,29 @@
 /*
- * engine.ts  v3 — dot field with vortex swirl.
+ * engine.ts  v4 - dot field with ocean swell, vortex swirl, and photo handoff.
  *
- * Free dots are now pulled by three slow-moving vortex attractors that orbit
- * the page in long arcs.  Each vortex applies a tangential (whirlpool) force
- * so dots orbit rather than converge.  The cursor also creates a local
- * whirlpool: dots near it are repelled radially AND spun tangentially,
- * producing a clear rotating wake.
+ * Free dots ride three layered motions:
+ *   1. A diagonal travelling swell (waveField): bands of motion sweep across
+ *      the screen like open water, and dots sparkle on the crests.
+ *   2. Curl-noise eddies - divergence-free wander so the field stays fluid.
+ *   3. Four slow vortex attractors plus a cursor whirlpool: dots near the
+ *      pointer are pushed away AND spun tangentially.
  *
- * Everything else (spring assembly, crowd dial, photo donation) is unchanged
- * from v2 except the photo.donate() call is now wired into assemble().
+ * Assembly is unchanged at heart (claim nearest free dots, damped springs,
+ * left-to-right stagger, DOM chars fade in underneath) with one new trick:
+ * when an expansion has an origin and the portrait is on screen, the engine
+ * swaps its claimed dots INTO photo cells - the cell hides, the engine dot
+ * launches from that exact pixel, and the portrait visibly feeds the words.
+ * Cells refill in under 20 s.
+ *
+ * spellFromPhoto() does the same for ambient words: every so often the
+ * portrait's own pixels rearrange into a word in front of the photo, hold,
+ * then dissolve back into the free field while the photo heals.
  */
 
 import * as THREE from 'three';
-import { PhotoLayer } from './photo';
+import { PhotoLayer, type LayoutOpts, type SlotRect } from './photo';
 import {
-  clamp, mulberry32, curl2, buildSchedule, strideForBudget, poolCount,
+  clamp, mulberry32, curl2, waveField, buildSchedule, strideForBudget, poolCount,
 } from '../utils.js';
 
 const TAU = Math.PI * 2;
@@ -29,6 +38,7 @@ type Rec = {
   el: Element; need: number; got: number;
   revealAt: number; done: boolean; fadeAt: number;
 };
+type Amb   = { until: number };
 type Glyph = { pts: [number, number][]; h: number };
 
 /* ---------------------------------------------------------------- shaders */
@@ -82,8 +92,10 @@ export class DotEngine {
   private alphaAttr!: THREE.BufferAttribute;
 
   private recs:   Rec[]    = [];
+  private ambs:   Amb[]    = [];
   private active: number[] = [];
   private photo:  PhotoLayer | null = null;
+  private slotEl: HTMLElement | null = null;
 
   private rng    = mulberry32(0x00c0ffee);
   private glyphs = new Map<string, Glyph>();
@@ -203,12 +215,38 @@ export class DotEngine {
         const r = this.recs[ri];
         if (!r.done) r.revealAt += shift; else r.fadeAt += shift;
       }
+      for (const a of this.ambs) a.until += shift;
       for (let i = 0; i < this.N; i++) {
         if (this.st[i] === SEEK) this.seekT[i] += shift;
       }
     }
     this.kick();
   };
+
+  private slotPageRect(): SlotRect {
+    const el = this.slotEl;
+    if (!el || !el.isConnected) return null;
+    const cs = getComputedStyle(el);
+    if (cs.display === 'none') return null;
+    const r = el.getBoundingClientRect();
+    if (r.width < 40) return null;
+    return { x: r.left + scrollX, y: r.top + scrollY, w: r.width, h: r.height };
+  }
+
+  /* measured page anchors so the portrait can centre itself in the real
+     leftover space and stay clear of the footer rule on any aspect ratio */
+  private layoutOpts(): LayoutOpts {
+    let colRight = 792;
+    let footerTop = innerHeight;
+    const main = document.querySelector('main');
+    if (main) colRight = Math.max(520, Math.min(main.getBoundingClientRect().right, innerWidth));
+    const foot = document.querySelector('footer');
+    if (foot) {
+      const fr = foot.getBoundingClientRect();
+      if (fr.height > 0) footerTop = fr.top + scrollY;
+    }
+    return { colRight, footerTop };
+  }
 
   private resize() {
     if (!this.renderer || !this.mat) return;
@@ -220,7 +258,7 @@ export class DotEngine {
     this.camera.left   = 0; this.camera.right  = this.w;
     this.camera.top    = 0; this.camera.bottom = this.h;
     this.camera.updateProjectionMatrix();
-    this.photo?.layout(this.w, this.h, dpr);
+    this.photo?.layout(this.w, this.h, dpr, this.slotPageRect(), this.layoutOpts());
     if (this.active.length) this.finishAll();
   }
 
@@ -271,8 +309,11 @@ export class DotEngine {
     }
 
     const { px, py, vx, vy, st, alpha } = this;
+    /* pointer momentum decays when the pointer rests */
+    this.pointerVX *= Math.exp(-dt * 4);
+    this.pointerVY *= Math.exp(-dt * 4);
     const pvx = this.pointerVX, pvy = this.pointerVY;
-    const stir = 150 + Math.min(450, Math.hypot(pvx, pvy) * 24);
+    const stir = 170 + Math.min(450, Math.hypot(pvx, pvy) * 24);
 
     for (let i = 0; i < this.N; i++) {
       const s = st[i];
@@ -295,39 +336,60 @@ export class DotEngine {
         const dx = txv - px[i], dy = tyv - py[i];
         if (ramp === 1 && dx * dx + dy * dy < 0.5 && Math.abs(vx[i]) + Math.abs(vy[i]) < 26) {
           st[i] = LOCK; px[i] = txv; py[i] = tyv; vx[i] = 0; vy[i] = 0;
-          this.recs[this.charOf[i]].got++;
+          const ci = this.charOf[i];
+          if (ci >= 0) this.recs[ci].got++;
         }
         alpha[i] += (0.9 - alpha[i]) * Math.min(1, dt * 5);
         continue;
       }
 
       if (s === LOCK) {
-        const r = this.recs[this.charOf[i]];
+        const ci = this.charOf[i];
         px[i] = this.tx[i] + Math.sin(this.seed[i] * 43 + t * 2.1) * 0.3;
         py[i] = (this.ty[i] - sy) + Math.cos(this.seed[i] * 57 + t * 1.7) * 0.3;
-        if (r.done && now >= r.fadeAt) {
-          if (this.rng() < 0.45) {
-            st[i] = DEAD;
-          } else {
+
+        if (ci >= 0) {
+          /* a DOM character: linger after reveal, then dissolve */
+          const r = this.recs[ci];
+          if (r.done && now >= r.fadeAt) {
+            if (this.rng() < 0.45) {
+              st[i] = DEAD;
+            } else {
+              st[i] = RELEASE; this.relT[i] = now;
+              const a2 = this.rng() * TAU;
+              const sp = 20 + this.rng() * 40;
+              vx[i] = Math.cos(a2) * sp; vy[i] = Math.sin(a2) * sp - 6;
+            }
+          }
+          alpha[i] += (0.92 - alpha[i]) * Math.min(1, dt * 8);
+        } else {
+          /* an ambient photo-word dot: hold, then rejoin the field (never dies) */
+          const a = this.ambs[-2 - ci];
+          if (!a || now >= a.until) {
             st[i] = RELEASE; this.relT[i] = now;
             const a2 = this.rng() * TAU;
-            const sp = 20 + this.rng() * 40;
-            vx[i] = Math.cos(a2) * sp; vy[i] = Math.sin(a2) * sp - 6;
+            const sp = 16 + this.rng() * 34;
+            vx[i] = Math.cos(a2) * sp; vy[i] = Math.sin(a2) * sp - 5;
           }
+          alpha[i] += (0.95 - alpha[i]) * Math.min(1, dt * 8);
         }
-        alpha[i] += (0.92 - alpha[i]) * Math.min(1, dt * 8);
         continue;
       }
 
-      /* FREE and RELEASE — the swirling free field */
+      /* FREE and RELEASE - the swirling, rolling free field */
 
-      /* 1. Base curl-noise velocity target */
+      /* 1. Curl-noise eddies (calmer than v3 so the swell reads clearly) */
       const [u, v] = curl2(px[i] * 0.0011, py[i] * 0.0011, t * 0.075);
-      const speed  = 22 + this.seed[i] * 18;
-      let targetVX = u * speed;
-      let targetVY = v * speed;
+      const eddy   = 14 + this.seed[i] * 12;
+      let targetVX = u * eddy;
+      let targetVY = v * eddy;
 
-      /* 2. Vortex tangential contributions */
+      /* 2. Diagonal ocean swell sweeping across the screen */
+      const [wu, wv, crest] = waveField(px[i], py[i], t);
+      targetVX += wu;
+      targetVY += wv;
+
+      /* 3. Vortex tangential contributions */
       for (let vi = 0; vi < this.VN; vi++) {
         const dvx = px[i] - this.vortPX[vi];
         const dvy = py[i] - this.vortPY[vi];
@@ -337,27 +399,27 @@ export class DotEngine {
           const d          = Math.sqrt(d2);
           const influence  = (1 - d / maxR);
           /* quadratic falloff: very strong near centre, fades at edge */
-          const vortSpeed  = influence * influence * 70 * this.vortSgn[vi];
+          const vortSpeed  = influence * influence * 52 * this.vortSgn[vi];
           /* tangential direction (CCW = (-dy/d, dx/d)) */
           targetVX += (-dvy / d) * vortSpeed;
           targetVY += ( dvx / d) * vortSpeed;
         }
       }
 
-      /* 3. Blend current velocity toward target */
+      /* 4. Blend current velocity toward target */
       const blend = 1 - Math.exp(-dt * (s === RELEASE ? 2.6 : 1.6));
       vx[i] += (targetVX - vx[i]) * blend;
       vy[i] += (targetVY - vy[i]) * blend;
 
-      /* 4. Cursor: radial repulsion + tangential whirlpool */
+      /* 5. Cursor: radial repulsion + tangential whirlpool */
       const mdx = px[i] - this.pointerX;
       const mdy = py[i] - this.pointerY;
       const md2 = mdx * mdx + mdy * mdy;
-      if (md2 < 22500 && md2 > 0.01) {         /* 150 px radius */
+      if (md2 < 28900 && md2 > 0.01) {         /* 170 px radius */
         const md        = Math.sqrt(md2);
-        const radialF   = (1 - md / 150) * stir * dt;
+        const radialF   = (1 - md / 170) * stir * dt;
         /* tangential force (CCW whirlpool around cursor) */
-        const tangentF  = radialF * 0.65;
+        const tangentF  = radialF * 1.0;
         vx[i] += (mdx / md) * radialF + (-mdy / md) * tangentF + pvx * 0.6 * dt;
         vy[i] += (mdy / md) * radialF + ( mdx / md) * tangentF + pvy * 0.6 * dt;
       }
@@ -370,12 +432,14 @@ export class DotEngine {
       if (s === RELEASE && now - this.relT[i] > 420) st[i] = FREE;
 
       const visible = this.seed[i] <= this.crowd ? 1 : 0;
-      const tw      = 0.62 + 0.38 * Math.sin(this.seed[i] * TAU + t * (0.6 + this.seed[i] * 1.6));
+      /* dots sparkle as the swell crest passes through them */
+      const sparkle = 1 + 0.22 * Math.max(0, crest);
+      const tw      = (0.62 + 0.38 * Math.sin(this.seed[i] * TAU + t * (0.6 + this.seed[i] * 1.6))) * sparkle;
       const target  = this.baseA[i] * tw * this.fade * visible;
       alpha[i] += (target - alpha[i]) * Math.min(1, dt * (s === RELEASE ? 3 : 4));
     }
 
-    this.photo?.update(now, dt, this.fade, this.pointerX, this.pointerY);
+    this.photo?.update(now, dt, this.fade, this.pointerX, this.pointerY, sy);
 
     const pos = this.posAttr.array as Float32Array;
     for (let i = 0; i < this.N; i++) {
@@ -455,12 +519,25 @@ export class DotEngine {
     void layer.load(url).then(() => {
       if (this.photo !== layer) return;
       const dpr = Math.min(devicePixelRatio || 1, 2);
-      layer.layout(this.w, this.h, dpr);
+      layer.layout(this.w, this.h, dpr, this.slotPageRect(), this.layoutOpts());
       this.kick();
     }).catch(() => {
       if (this.photo === layer) this.photo = null;
       layer.dispose();
     });
+  }
+
+  /* the in-flow element the portrait should fill on small screens */
+  setPhotoSlot(el: HTMLElement | null): void {
+    this.slotEl = el;
+    this.relayoutPhoto();
+  }
+
+  /* re-measure the photo placement (layout shifts, slot moves, expansions) */
+  relayoutPhoto(): void {
+    if (!this.photo) return;
+    const dpr = Math.min(devicePixelRatio || 1, 2);
+    this.photo.layout(this.w, this.h, dpr, this.slotPageRect(), this.layoutOpts());
   }
 
   assemble(root: HTMLElement, { delay = 0, perChar = 12, origin }: {
@@ -476,11 +553,17 @@ export class DotEngine {
     }
 
     /*
-     * When an expansion has an origin, ask the portrait to donate ~220 of
-     * its nearby dots toward that position — they drift out of the photo,
-     * visually feed the words, and refill over 20 s.
+     * Photo handoff: when an expansion has an origin and the portrait is on
+     * screen, swap up to ~340 of the engine's claimed dots into photo cells
+     * facing the origin.  Each cell hides (refilling in <20 s) while the
+     * engine dot launches from the exact same pixel - the portrait visibly
+     * lends its dots to the words being assembled.
      */
-    if (origin) this.photo?.donate(origin.x, origin.y, 220);
+    let starts: [number, number][] = [];
+    let si = 0;
+    if (origin && this.photo?.visible()) {
+      starts = this.photo.takeCellsToward(origin.x, origin.y, 340);
+    }
 
     const rng   = this.rng;
     const sched = buildSchedule(spans.length, { perChar, rng });
@@ -510,6 +593,7 @@ export class DotEngine {
       origin?.y ?? rootRect.top  + rootRect.height / 2,
     );
 
+    let claimed = 0;
     for (const it of items) {
       const font  = this.fontOf(it.el.parentElement ?? it.el);
       const glyph = this.glyphPoints(it.el.textContent!, font, stride);
@@ -526,6 +610,14 @@ export class DotEngine {
         const typ = it.rect.top  + sy0 + gy * scaleY + (rng() - 0.5) * 0.7;
         const pi  = claim();
         if (pi < 0) { rec.need--; continue; }
+        /* every other claimed dot launches from a donated photo cell */
+        if (si < starts.length && (claimed & 1) === 0) {
+          const sp = starts[si++];
+          this.px[pi] = sp[0]; this.py[pi] = sp[1];
+          this.vx[pi] = 0;     this.vy[pi] = 0;
+          this.alpha[pi] = 0.8;
+        }
+        claimed++;
         this.st[pi]     = SEEK;
         this.tx[pi]     = txp;
         this.ty[pi]     = typ;
@@ -542,15 +634,94 @@ export class DotEngine {
     }, delay + sched.total + 950));
   }
 
+  /*
+   * Ambient photo words: the portrait's own pixels rearrange into `word`
+   * in front of the photo, hold for a beat, then dissolve back into the
+   * free field while the photo heals (every cell refills in <20 s).
+   * Returns false when the portrait is hidden or the field is starving.
+   */
+  spellFromPhoto(word: string): boolean {
+    if (!this.ok || !this.photo?.visible() || document.hidden) return false;
+    const free = this.countFree();
+    if (free < 1200) return false;
+
+    const r = this.photo.screenRect();
+
+    /* size the word to ~76 % of the portrait width */
+    const probe = 100;
+    const fam   = 'Inter, ui-sans-serif, system-ui, sans-serif';
+    this.mx.font = `700 ${probe}px ${fam}`;
+    const mw = Math.max(this.mx.measureText(word).width, 1);
+    const fs = clamp((r.w * 0.76 / mw) * probe, 24, 120);
+    const font = `700 ${fs.toFixed(1)}px ${fam}`;
+
+    const budget = Math.min(1300, Math.floor(free * 0.5));
+    const stride = strideForBudget(fs * fs * 0.18 * word.length, budget);
+    const glyph  = this.glyphPoints(word, font, stride);
+    if (!glyph.pts.length) return false;
+
+    /* the word sits just above the portrait's vertical centre */
+    this.mx.font = font;
+    const wordW = this.mx.measureText(word).width;
+    const x0 = r.x + (r.w - wordW) / 2;
+    const y0 = r.y + r.h * 0.46 - glyph.h / 2;
+
+    /* bite the cells out of an inflated word box (organic, not scanline) */
+    const sources = this.photo.takeCellsInRect(
+      x0 - 50, y0 - 50, wordW + 100, glyph.h + 100,
+      glyph.pts.length,
+    );
+    if (sources.length < glyph.pts.length * 0.4) return false;
+
+    const rng   = this.rng;
+    const start = performance.now() + 60;
+    const ambId = this.ambs.push({ until: start + 3600 + word.length * 90 }) - 1;
+    const ci    = -2 - ambId;
+    const sx0 = scrollX, sy0 = scrollY;
+    const claim = this.makeClaimer(r.x + r.w / 2, r.y + r.h / 2);
+
+    /* if the photo gave fewer cells than targets, thin the targets evenly */
+    const keep = Math.min(glyph.pts.length, sources.length);
+    const step = glyph.pts.length / keep;
+    let acc = 0, j = 0, used = 0;
+    /* glyph extents for left-to-right launch stagger */
+    let minX = Infinity, maxX = -Infinity;
+    for (const [gx] of glyph.pts) { if (gx < minX) minX = gx; if (gx > maxX) maxX = gx; }
+    const span = Math.max(1, maxX - minX);
+
+    for (let pIdx = 0; pIdx < glyph.pts.length; pIdx++) {
+      if (pIdx < acc) continue;
+      acc += step;
+      const [gx, gy] = glyph.pts[pIdx];
+      const pi = claim();
+      if (pi < 0) break;
+      const sp = sources[j++ % sources.length];
+      this.px[pi] = sp[0]; this.py[pi] = sp[1];
+      this.vx[pi] = (rng() - 0.5) * 24;
+      this.vy[pi] = (rng() - 0.5) * 24;
+      this.alpha[pi] = 0.75;
+      this.st[pi]     = SEEK;
+      this.tx[pi]     = x0 + gx + sx0;
+      this.ty[pi]     = y0 + gy + sy0;
+      this.seekT[pi]  = start + ((gx - minX) / span) * 460 + rng() * 70;
+      this.charOf[pi] = ci;
+      used++;
+    }
+    if (!used) return false;
+    this.kick();
+    return true;
+  }
+
   finishAll() {
     const now = performance.now();
     for (const ri of this.active) {
       const r = this.recs[ri];
       if (!r.done) { r.done = true; r.fadeAt = now; r.el.classList.add('on'); }
     }
+    for (const a of this.ambs) a.until = Math.min(a.until, now);
     for (let i = 0; i < this.N; i++) {
       if (this.st[i] === SEEK || this.st[i] === LOCK) {
-        if (this.rng() < 0.45) {
+        if (this.charOf[i] >= 0 && this.rng() < 0.45) {
           this.st[i] = DEAD;
         } else {
           this.st[i] = RELEASE; this.relT[i] = now;

@@ -3,7 +3,7 @@
 /*
  * compendium.tsx
  * The whole page: prose, tokens, the WebGL dot field, the click counter,
- * and the intro orchestration.
+ * the intro orchestration, and the ambient photo-word scheduler.
  */
 
 import {
@@ -16,9 +16,15 @@ import { formatClicks } from '../utils.js';
 
 const CKEY = 'nc.clicks';
 
+/* words the portrait spells with its own pixels, every so often */
+const PHOTO_WORDS = [
+  'HI', 'BUILD', 'THINK', 'CLIMB', 'CREATE', 'INSIGHT', 'BERKELEY', 'COKE ZERO',
+];
+
 export default function Compendium() {
   const rootRef = useRef<HTMLDivElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
+  const slotRef = useRef<HTMLDivElement>(null);
   const engineRef = useRef<DotEngine | null>(null);
   const introRan = useRef(false);
 
@@ -44,28 +50,51 @@ export default function Compendium() {
   }, []);
 
   /*
-   * Rhythm solver: spacing scales linearly with the --r variable, so two
-   * instant probes (r=1, r=2) give the pixels-per-r slope. Solve for the r
-   * that makes the page fill the viewport exactly, in any expansion state,
-   * on any screen. Probes run with transitions suppressed inside a single
-   * frame, so nothing flickers; the real change then eases in.
+   * Layout solver: two knobs, solved with instant probes inside one frame
+   * (transitions suppressed, nothing flickers).
+   *
+   *  --r   inter-section rhythm: spacing scales linearly with it, so two
+   *        probes give the slope and we solve for the exact fit.
+   *  --fs  font scale [0.74-1]: the last resort when --r bottoms out and
+   *        the fully-expanded page still overflows; re-solve --r after.
+   *
+   * Desktop fits any expansion state on one screen; mobile keeps natural
+   * sizing and scrolls instead.
    */
   const fitRhythm = useCallback(() => {
     const m = rootRef.current;
     if (!m) return;
+    /* both knobs live on :root so body-level type sizing can see them */
+    const knobs = document.documentElement.style;
     m.classList.add('measuring');
-    m.style.setProperty('--r', '1');
-    const h1 = m.offsetHeight;
-    m.style.setProperty('--r', '2');
-    const h2 = m.offsetHeight;
-    const slope = Math.max(40, h2 - h1);
-    /* allow r down to 0.72 on desktop so fully-expanded page stays on screen */
+
     const isMobile = innerWidth <= 700 || (innerHeight <= 620 && innerWidth <= 900);
-    const rMin = isMobile ? 0.9 : 0.72;
-    const r = Math.max(rMin, Math.min(3.6, 1 + (innerHeight - 8 - h1) / slope));
-    m.style.setProperty('--r', String(Math.round(r * 100) / 100));
+    const solveR = () => {
+      knobs.setProperty('--r', '1');
+      const h1 = m.offsetHeight;
+      knobs.setProperty('--r', '2');
+      const h2 = m.offsetHeight;
+      const slope = Math.max(40, h2 - h1);
+      const rMin = isMobile ? 0.9 : 0.62;
+      const r = Math.max(rMin, Math.min(3.6, 1 + (innerHeight - 8 - h1) / slope));
+      knobs.setProperty('--r', String(Math.round(r * 100) / 100));
+    };
+
+    knobs.setProperty('--fs', '1');
+    solveR();
+    /* second knob: shrink the type when rhythm alone cannot fit the page */
+    for (let pass = 0; pass < 2 && !isMobile; pass++) {
+      const over = m.offsetHeight - (innerHeight - 8);
+      if (over <= 0) break;
+      const cur = parseFloat(knobs.getPropertyValue('--fs') || '1') || 1;
+      const fs = Math.max(0.72, Math.min(1, cur * ((innerHeight - 8) / m.offsetHeight)));
+      knobs.setProperty('--fs', String(Math.round(fs * 1000) / 1000));
+      solveR(); /* spacing re-solved at the smaller type size */
+    }
+
     void m.offsetHeight; /* flush layout before transitions return */
     m.classList.remove('measuring');
+    engineRef.current?.relayoutPhoto();
   }, []);
 
   /*
@@ -191,6 +220,7 @@ export default function Compendium() {
       const engine = getEngine(canvasRef.current, reduced);
       engineRef.current = engine;
       /* the portrait: same dots, own population, immune to the crowd dial */
+      engine.setPhotoSlot(slotRef.current);
       engine.attachPhoto('/me.jpg');
 
       const root = rootRef.current;
@@ -222,6 +252,24 @@ export default function Compendium() {
     return () => { cancelled = true; net.disconnect(); };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [fitRhythm]);
+
+  /*
+   * Ambient photo words: once the page settles, the portrait periodically
+   * rearranges a few hundred of its own pixels into a word, holds it, then
+   * lets them drift back while the photo heals (always under 20 s).
+   */
+  useEffect(() => {
+    if (!settled) return;
+    let wi = Math.floor(Math.random() * PHOTO_WORDS.length);
+    const say = () => {
+      if (document.hidden) return;
+      engineRef.current?.spellFromPhoto(PHOTO_WORDS[wi % PHOTO_WORDS.length]);
+      wi++;
+    };
+    const first = setTimeout(say, 6000);
+    const loop  = setInterval(say, 17000);
+    return () => { clearTimeout(first); clearInterval(loop); };
+  }, [settled]);
 
   const api = useMemo<CompendiumApi>(() => ({
     isOpen: (id) => open.has(id),
@@ -278,6 +326,9 @@ export default function Compendium() {
         <header>
           <h1 data-block><T text="Nikunj's Compendium" /></h1>
         </header>
+
+        {/* on small screens the portrait lives here, in flow, scaled to the screen */}
+        <div id="photo-slot" ref={slotRef} aria-hidden="true" />
 
         <section aria-label="About">
           <p data-block>
