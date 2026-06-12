@@ -113,10 +113,17 @@ of them:
   release past the distance/velocity threshold to cycle photos (list
   them in `app/photos.ts`); a cursor sheen brightens but never distorts.
 - **what I listen to** — my last 20 distinct listens from Last.fm as an
-  edge-to-edge louvered cover flow. The pointer's x position scrolls the
-  row (wheel + touch-drag too); the cover at screen centre eases flat
-  and face-on while its name, artist, my rating and thoughts rise under
-  it. Ratings/thoughts live in `app/music-notes.ts`.
+  edge-to-edge louvered cover flow, repainted live (the feed re-polls
+  every minute while the tab is open and follows the centred track by
+  key across updates). The scroll wheel / trackpad moves the row (touch
+  drag too), clicking any off-centre cover glides it to the centre, and
+  the centred cover eases flat and face-on while its name, artist, play
+  count, when I last heard it, and my rating and thoughts rise under it.
+  Covers are fully opaque and composite in painter's order (no card ever
+  slices into its neighbour); the dot field lives behind the layer and
+  keeps simulating while hidden. Ratings/thoughts live in
+  `app/music-notes.ts`. The dock is liquid glass; its three icons are
+  Nikunj's chosen vectors (profile, eighth note, boulderer).
 - **how I recover** — Whoop recovery / sleep / strain with a 7-day
   recovery × strain strip.
 

@@ -16,9 +16,9 @@ import { dockMagnify } from '../utils.js';
 export type TabId = 'person' | 'music' | 'activity';
 
 const ITEMS: { id: TabId; icon: string; label: string }[] = [
-  { id: 'person', icon: 'person', label: 'the compendium' },
-  { id: 'music', icon: 'music', label: 'what I listen to' },
-  { id: 'activity', icon: 'pulse', label: 'how I recover' },
+  { id: 'person', icon: 'dockperson', label: 'the compendium' },
+  { id: 'music', icon: 'dockmusic', label: 'what I listen to' },
+  { id: 'activity', icon: 'dockclimb', label: 'how I recover' },
 ];
 
 export function Dock({ tab, onTab, show }: {

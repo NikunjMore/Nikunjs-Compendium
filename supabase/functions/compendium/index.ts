@@ -35,6 +35,7 @@ const REDIRECT_URI = `${SB_URL}/functions/v1/compendium/callback`;
 
 const HEALTH_TTL = 15 * 60 * 1000;
 const MUSIC_TTL = 60 * 1000;
+const COUNTS_TTL = 15 * 60 * 1000;
 
 const CORS: HeadersInit = {
   'Access-Control-Allow-Origin': '*',
@@ -199,22 +200,79 @@ function composeHealth(rec: any, cyc: any, slp: any) {
   };
 }
 
+/* ---------------- Last.fm ---------------- */
+
+async function lastfm(params: Record<string, string>) {
+  const u = new URL('https://ws.audioscrobbler.com/2.0/');
+  u.searchParams.set('api_key', LASTFM_KEY);
+  u.searchParams.set('format', 'json');
+  for (const [k, v] of Object.entries(params)) u.searchParams.set(k, v);
+  const r = await fetch(u);
+  if (!r.ok) throw new Error(`lastfm ${params.method}: ${r.status}`);
+  return r.json();
+}
+
+/* The 20 most recent distinct artist+name pairs from a recenttracks payload. */
+function uniqueKeys(recent: any, n = 20): { key: string; artist: string; name: string }[] {
+  let list = recent?.recenttracks?.track ?? [];
+  if (!Array.isArray(list)) list = [list];
+  const seen = new Set<string>();
+  const out: { key: string; artist: string; name: string }[] = [];
+  for (const t of list) {
+    const artist = t?.artist?.name ?? t?.artist?.['#text'] ?? '';
+    const name = t?.name ?? '';
+    if (!artist || !name) continue;
+    const key = `${artist} — ${name}`.toLowerCase();
+    if (seen.has(key)) continue;
+    seen.add(key);
+    out.push({ key, artist, name });
+    if (out.length >= n) break;
+  }
+  return out;
+}
+
 /* ---------------- routes ---------------- */
 
+/*
+ * /music returns { recent, counts }: the raw recenttracks payload plus a
+ * map of `${artist} — ${name}` (lowercased) -> total user play count.
+ * Counts come from track.getInfo (userplaycount), cached per track for
+ * 15 minutes in kv('counts') so a refresh costs at most a few calls.
+ */
 async function music(): Promise<Response> {
   const cache = await kvGet('music');
-  if (cache?.payload && Date.now() - new Date(cache.updated_at).getTime() < MUSIC_TTL) {
+  if (cache?.payload?.recent && Date.now() - new Date(cache.updated_at).getTime() < MUSIC_TTL) {
     return json(cache.payload, 200, { 'Cache-Control': 'public, max-age=30' });
   }
-  const r = await fetch(
-    'https://ws.audioscrobbler.com/2.0/?method=user.getrecenttracks' +
-    `&user=${LASTFM_USER}&api_key=${LASTFM_KEY}&format=json&limit=50&extended=1`,
-  );
-  if (!r.ok) {
+  let recent: any;
+  try {
+    recent = await lastfm({
+      method: 'user.getrecenttracks', user: LASTFM_USER, limit: '50', extended: '1',
+    });
+  } catch {
     if (cache?.payload) return json(cache.payload); /* stale beats nothing */
     return json({ error: 'lastfm_unreachable' }, 502);
   }
-  const payload = await r.json();
+  const wanted = uniqueKeys(recent);
+  const store = (await kvGet('counts'))?.payload ?? {};
+  const now = Date.now();
+  const missing = wanted.filter((w) => !store[w.key] || now - store[w.key].at > COUNTS_TTL);
+  for (let i = 0; i < missing.length; i += 10) {
+    await Promise.all(missing.slice(i, i + 10).map(async (w) => {
+      try {
+        const info = await lastfm({
+          method: 'track.getInfo', artist: w.artist, track: w.name,
+          username: LASTFM_USER, autocorrect: '1',
+        });
+        const c = parseInt(info?.track?.userplaycount ?? '', 10);
+        if (Number.isFinite(c)) store[w.key] = { c, at: now };
+      } catch { /* count stays unknown for this track */ }
+    }));
+  }
+  await kvSet('counts', store);
+  const counts: Record<string, number> = {};
+  for (const w of wanted) if (store[w.key]) counts[w.key] = store[w.key].c;
+  const payload = { recent, counts };
   await kvSet('music', payload);
   return json(payload, 200, { 'Cache-Control': 'public, max-age=30' });
 }

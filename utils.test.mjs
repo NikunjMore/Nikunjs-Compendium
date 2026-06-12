@@ -202,7 +202,7 @@ test('refillWindow scales with the bite and never breaks the 20 s budget', () =>
 /* ================= v10 additions ================= */
 
 import {
-  lerpExp, coverTransform, scrollFromPointer, centerIndex, dockMagnify,
+  lerpExp, coverTransform, normalizeWheel, timeAgo, centerIndex, dockMagnify,
   stackLayout, flingOutcome, exciteTarget, pickImage, uniqueTracks,
   normalizeRecent, fmtDuration, recoveryBand, fmtStrain,
 } from './utils.js';
@@ -248,18 +248,23 @@ test('coverTransform is symmetric in focus around the centre', () => {
   assert.ok(Math.abs(a.x + b.x) < 1e-9, 'mirrored x offsets');
 });
 
-test('scrollFromPointer spans the full row and clamps at the rails', () => {
-  const n = 20, sp = 150, w = 1440;
-  assert.equal(scrollFromPointer(0, w, n, sp), 0);
-  assert.equal(scrollFromPointer(w, w, n, sp), (n - 1) * sp);
-  const mid = scrollFromPointer(w / 2, w, n, sp);
-  assert.ok(mid > 0 && mid < (n - 1) * sp);
-  let prev = -1;
-  for (let x = 0; x <= w; x += 60) {
-    const v = scrollFromPointer(x, w, n, sp);
-    assert.ok(v >= prev, 'monotonic in pointer x');
-    prev = v;
-  }
+test('normalizeWheel converts lines/pages to px and clamps a notch', () => {
+  assert.equal(normalizeWheel(100), 100, 'pixel mode passes through');
+  assert.equal(normalizeWheel(3, 0, 1), 99, 'line mode scales by ~33px');
+  assert.equal(normalizeWheel(1, 0, 2), 260, 'page mode hits the clamp');
+  assert.equal(normalizeWheel(-9000), -260, 'clamped both ways');
+  assert.equal(normalizeWheel(40, 25), 65, 'deltaX folds in (trackpads)');
+});
+
+test('timeAgo buckets read like a human wrote them', () => {
+  const now = 1_800_000_000_000;
+  assert.equal(timeAgo(now - 20 * 1000, now), 'just now');
+  assert.equal(timeAgo(now - 5 * 60 * 1000, now), '5m ago');
+  assert.equal(timeAgo(now - 3 * 3600 * 1000, now), '3h ago');
+  assert.equal(timeAgo(now - 2 * 86400 * 1000, now), '2d ago');
+  assert.equal(timeAgo(now - 21 * 86400 * 1000, now), '3w ago');
+  assert.equal(timeAgo(NaN, now), '');
+  assert.equal(timeAgo(now + 50_000, now), 'just now', 'clock skew is forgiven');
 });
 
 test('centerIndex rounds to the nearest card and clamps', () => {

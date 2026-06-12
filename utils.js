@@ -238,10 +238,28 @@ export function coverTransform(i, scroll, n, {
   return { x, ry, z, s, focus, zi };
 }
 
-/* Map a pointer x in [6%, 94%] of the viewport onto the full scroll range. */
-export function scrollFromPointer(mx, w, n, spacing = 150) {
-  const t = clamp((mx - w * 0.06) / (w * 0.88), 0, 1);
-  return t * (n - 1) * spacing;
+/*
+ * normalizeWheel: one wheel event -> a scroll step in px, whatever the
+ * device reports. deltaMode 0 = pixels, 1 = lines, 2 = pages. A single
+ * notch is clamped so an aggressive flick can't teleport the row.
+ */
+export function normalizeWheel(dy, dx = 0, mode = 0, { line = 33, page = 800, max = 260 } = {}) {
+  const k = mode === 1 ? line : mode === 2 ? page : 1;
+  return clamp((dy + dx) * k, -max, max);
+}
+
+/* "just now", "4m ago", "3h ago", "2d ago", "5w ago" */
+export function timeAgo(thenMs, nowMs = Date.now()) {
+  if (!Number.isFinite(thenMs)) return '';
+  const s = Math.max(0, (nowMs - thenMs) / 1000);
+  if (s < 60) return 'just now';
+  const m = Math.floor(s / 60);
+  if (m < 60) return `${m}m ago`;
+  const h = Math.floor(m / 60);
+  if (h < 24) return `${h}h ago`;
+  const d = Math.floor(h / 24);
+  if (d < 7) return `${d}d ago`;
+  return `${Math.floor(d / 7)}w ago`;
 }
 
 /* Which card is closest to centre for a given scroll. */

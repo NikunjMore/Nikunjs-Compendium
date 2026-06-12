@@ -3,22 +3,31 @@
 /*
  * musictab.tsx
  * The music tab (video ref #6): my last 20 distinct listens from Last.fm
- * as an edge-to-edge louvered row of album covers. Every card shares one
- * tilt; the pointer's x position drives the scroll (wheel and touch-drag
- * work too); whichever cover reaches the screen centre eases flat,
- * face-on, and its name / artist / rating / thoughts rise beneath it.
- * Geometry comes from the pure, unit-tested coverTransform family.
+ * as an edge-to-edge louvered row of album covers, repainted live as I
+ * listen (the feed re-polls every minute while the tab is open and the
+ * centred track is followed across updates by key, not index).
+ *
+ * Interaction, by design calm:
+ *   - the scroll wheel / trackpad (and touch-drag) moves the row
+ *   - clicking any off-centre cover glides it to the centre
+ *   - the centred cover eases flat, face-on, and shows name / artist /
+ *     play count / when I last heard it / my rating and thoughts
+ *
+ * Covers are fully opaque and composited in painter's order (left over
+ * right, centre on top) so cards can never slice into one another; the
+ * dot field lives BEHIND this layer and keeps simulating while hidden.
  */
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { getRecentTracks, artLarge, type Track } from './lastfm';
+import { getRecentTracks, artLarge, trackKey, type Track } from './lastfm';
 import { noteFor } from './music-notes';
 import {
-  clamp, coverTransform, scrollFromPointer, centerIndex, lerpExp,
+  clamp, coverTransform, normalizeWheel, centerIndex, lerpExp, timeAgo,
 } from '../utils.js';
 
 const N = 20;
 const SKELETON = 9;
+const POLL_MS = 60_000;
 
 export function MusicTab({ active }: { active: boolean }) {
   const [tracks, setTracks] = useState<Track[] | null>(null);
@@ -26,22 +35,50 @@ export function MusicTab({ active }: { active: boolean }) {
   const [center, setCenter] = useState(0);
   const [dim, setDim] = useState({ w: 1200, h: 800 });
   const [reduced, setReduced] = useState(false);
+  const [, setTick] = useState(0); /* refreshes the "Xm ago" line */
 
   const cardRefs = useRef<(HTMLDivElement | null)[]>([]);
   const scrollCur = useRef(0);
   const scrollTgt = useRef(0);
   const raf = useRef(0);
   const lastT = useRef(0);
-  const touch = useRef<{ id: number; x: number; vx: number; t: number } | null>(null);
-  const fetched = useRef(false);
+  const touch = useRef<{ id: number; x: number; vx: number; t: number; moved: number } | null>(null);
+  const suppressClick = useRef(false);
+  const tracksRef = useRef<Track[] | null>(null);
 
-  const load = useCallback(() => {
+  /* ---- data: fetch now, then keep fetching while the tab is open ---- */
+  const load = useCallback(async () => {
     setErr(false);
-    getRecentTracks(N).then(setTracks).catch(() => setErr(true));
+    try {
+      const fresh = await getRecentTracks(N);
+      /* keep the listener's place: follow the centred track by key */
+      setTracks((old) => {
+        if (old?.length) {
+          const sp = spacingRef.current;
+          const oi = Math.min(old.length - 1, Math.max(0, Math.round(scrollTgt.current / sp)));
+          const key = trackKey(old[oi].artist, old[oi].name);
+          const ni = fresh.findIndex((t) => trackKey(t.artist, t.name) === key);
+          if (ni >= 0) {
+            scrollTgt.current = ni * sp;
+            scrollCur.current = scrollTgt.current;
+          } else {
+            scrollTgt.current = clamp(scrollTgt.current, 0, (fresh.length - 1) * sp);
+          }
+        }
+        return fresh;
+      });
+      tracksRef.current = fresh;
+    } catch {
+      if (!tracksRef.current) setErr(true);
+    }
   }, []);
 
   useEffect(() => {
-    if (active && !fetched.current) { fetched.current = true; load(); }
+    if (!active) return;
+    void load();
+    const poll = setInterval(load, POLL_MS);
+    const tick = setInterval(() => setTick((t) => t + 1), 30_000);
+    return () => { clearInterval(poll); clearInterval(tick); };
   }, [active, load]);
 
   useEffect(() => {
@@ -54,19 +91,21 @@ export function MusicTab({ active }: { active: boolean }) {
 
   /* ---- geometry ---- */
   const cardW = clamp(Math.min(dim.h * 0.46, dim.w * 0.36), 170, 430);
-  const spacing = Math.max(92, cardW * 0.42);
+  const spacing = Math.max(104, cardW * 0.5);
+  const spacingRef = useRef(spacing);
+  spacingRef.current = spacing;
   const opts = useMemo(() => ({
     spacing,
     tilt: 56,
     lift: cardW * 0.42,
-    spread: cardW * 0.3,
+    spread: cardW * 0.34,
     window: 1.45,
   }), [spacing, cardW]);
 
   const items: (Track | null)[] = tracks ?? Array.from({ length: SKELETON }, () => null);
   const n = items.length;
 
-  /* ---- the scroll loop: pointer-linked, smoothed, imperative ---- */
+  /* ---- the scroll loop: wheel-driven, smoothed, imperative ---- */
   useEffect(() => {
     if (!active || reduced || n === 0) return;
     const step = (now: number) => {
@@ -83,7 +122,6 @@ export function MusicTab({ active }: { active: boolean }) {
           `translate3d(${c.x - cardW / 2}px, ${-cardW / 2}px, ${c.z}px) ` +
           `rotateY(${c.ry}deg) scale(${c.s})`;
         el.style.zIndex = String(c.zi);
-        el.style.setProperty('--focus', c.focus.toFixed(3));
       }
       setCenter((p) => {
         const ci = centerIndex(scrollCur.current, spacing, n);
@@ -96,23 +134,15 @@ export function MusicTab({ active }: { active: boolean }) {
     return () => cancelAnimationFrame(raf.current);
   }, [active, reduced, n, spacing, cardW, opts]);
 
-  /* mouse position drives the row (the video's signature move) */
-  useEffect(() => {
-    if (!active || reduced) return;
-    const onMove = (e: PointerEvent) => {
-      if (e.pointerType !== 'mouse' || touch.current) return;
-      scrollTgt.current = scrollFromPointer(e.clientX, innerWidth, n, spacing);
-    };
-    addEventListener('pointermove', onMove, { passive: true });
-    return () => removeEventListener('pointermove', onMove);
-  }, [active, reduced, n, spacing]);
-
+  /* wheel / trackpad drives the row */
   const onWheel = (e: React.WheelEvent) => {
-    scrollTgt.current += (e.deltaY + e.deltaX) * 0.9;
+    scrollTgt.current += normalizeWheel(e.deltaY, e.deltaX, e.deltaMode);
   };
+
+  /* touch drag (with a flick of momentum) */
   const onPointerDown = (e: React.PointerEvent) => {
     if (e.pointerType === 'mouse') return;
-    touch.current = { id: e.pointerId, x: e.clientX, vx: 0, t: performance.now() };
+    touch.current = { id: e.pointerId, x: e.clientX, vx: 0, t: performance.now(), moved: 0 };
   };
   const onPointerMove = (e: React.PointerEvent) => {
     const t = touch.current;
@@ -120,14 +150,22 @@ export function MusicTab({ active }: { active: boolean }) {
     const now = performance.now();
     const dx = e.clientX - t.x;
     t.vx = dx / Math.max(0.001, (now - t.t) / 1000);
-    t.x = e.clientX; t.t = now;
+    t.x = e.clientX; t.t = now; t.moved += Math.abs(dx);
     scrollTgt.current -= dx * 1.7;
   };
   const onPointerUp = (e: React.PointerEvent) => {
     const t = touch.current;
     if (!t || e.pointerId !== t.id) return;
-    scrollTgt.current -= t.vx * 0.18; /* a flick keeps gliding */
+    scrollTgt.current -= t.vx * 0.18;
+    suppressClick.current = t.moved > 10;
     touch.current = null;
+    setTimeout(() => { suppressClick.current = false; }, 80);
+  };
+
+  /* click any cover: bring it to the centre (the calm way to browse) */
+  const centerOn = (i: number) => {
+    if (suppressClick.current) return;
+    scrollTgt.current = i * spacing;
   };
 
   const tr = tracks?.[center] ?? null;
@@ -144,6 +182,7 @@ export function MusicTab({ active }: { active: boolean }) {
               <img src={artLarge(t.art) || t.art} alt={`${t.name} cover`} loading="lazy" />
               <figcaption>
                 <strong>{t.name}</strong> · {t.artist}
+                {t.plays != null && t.plays > 0 && <> · {t.plays} plays</>}
               </figcaption>
             </figure>
           ))}
@@ -170,6 +209,11 @@ export function MusicTab({ active }: { active: boolean }) {
               key={t ? `${t.artist}-${t.name}` : `skel-${i}`}
               ref={(el) => { cardRefs.current[i] = el; }}
               className={`mcard${t ? '' : ' skel'}`}
+              role={t ? 'button' : undefined}
+              tabIndex={t && i !== center ? 0 : -1}
+              aria-label={t ? `Centre ${t.name} by ${t.artist}` : undefined}
+              onClick={() => centerOn(i)}
+              onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); centerOn(i); } }}
               style={{
                 width: cardW,
                 height: cardW,
@@ -186,7 +230,6 @@ export function MusicTab({ active }: { active: boolean }) {
                   draggable={false}
                   loading={i < 8 ? 'eager' : 'lazy'}
                   onError={(e) => {
-                    /* the 600px guess can miss; fall back to the real URL */
                     if (t.art && e.currentTarget.src !== t.art) e.currentTarget.src = t.art;
                   }}
                 />
@@ -205,6 +248,14 @@ export function MusicTab({ active }: { active: boolean }) {
             {tr.nowPlaying && <span className="mnow">now playing</span>}
           </div>
           <div className="martist">{tr.artist}{tr.album ? ` · ${tr.album}` : ''}</div>
+          <div className="mmeta">
+            {tr.plays != null && tr.plays > 0 && (
+              <>{tr.plays} {tr.plays === 1 ? 'play' : 'plays'}<span className="msep">·</span></>
+            )}
+            {tr.nowPlaying
+              ? <span className="live">listening right now</span>
+              : (tr.playedAt ? timeAgo(tr.playedAt) : '')}
+          </div>
           <div className="mnote">
             <span className="mrate">
               {note.rating != null ? `${note.rating.toFixed(1)} / 10` : 'unrated'}
