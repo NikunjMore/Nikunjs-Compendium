@@ -10,19 +10,22 @@
  *   - while the front card is dragged, the cards beneath glide one slot
  *     forward in step with the drag distance (dragPromote) - the next
  *     photo is already sitting straight before you let go
- *   - released past the distance/velocity threshold, the card does NOT
- *     fly off-screen: it slides straight back toward the deck while its
- *     z-order drops, visibly tucking UNDER the new front card into the
- *     rearmost fan slot (~0.45 s spring), exactly like the reference
+ *   - released past the distance/velocity threshold, the card slides
+ *     from your hand straight back into the deck, dropping under the
+ *     new front card on the way to the rearmost fan slot - like taking
+ *     the top photo off a real stack and sliding it underneath
  *   - released short of the threshold, everything springs home
+ *
+ * The trick that makes the slide real: every photo owns ONE DOM element
+ * for life (keyed by photo index). A release just re-ranks the depths,
+ * so each element transitions from wherever it is to its new pose - the
+ * released card from your hand to the back, the promoted card from its
+ * almost-straight pose to dead centre. Nothing remounts, nothing can
+ * teleport.
  *
  * Only real photos are dealt: with three photos you see the front card
  * and two backs - no empty placeholder frames. Photos render solid at
  * 100% opacity with a cursor sheen that never displaces a pixel.
- *
- * Placement (desktop): right of the text column with roughly 1/20 of the
- * screen kept clear at the right edge. On small screens it fills the
- * in-flow #photo-slot and scrolls with the page.
  */
 
 import { useCallback, useEffect, useRef, useState } from 'react';
@@ -39,17 +42,13 @@ type DragInfo = {
   id: number; sx: number; sy: number;
   dx: number; dy: number; vx: number; vy: number; t: number;
 } | null;
-type ExitPose = { idx: number; dx: number; dy: number; rot: number } | null;
 
 export function PhotoStack({ hidden }: { hidden: boolean }) {
   const [rect, setRect] = useState<Rect>(null);
   const [order, setOrder] = useState<number[]>(() => PHOTOS.map((_, i) => i));
   const [drag, setDrag] = useState<{ dx: number; dy: number } | null>(null);
-  /* the card that was just released: starts at its dragged pose, then
-     transitions into the rear fan slot (the visible tuck-under) */
-  const [exit, setExit] = useState<ExitPose>(null);
   const dragRef = useRef<DragInfo>(null);
-  const frontRef = useRef<HTMLDivElement>(null);
+  const frontRef = useRef<HTMLDivElement | null>(null);
 
   const nBacks = Math.min(PHOTOS.length - 1, MAX_BACKS);
 
@@ -125,7 +124,6 @@ export function PhotoStack({ hidden }: { hidden: boolean }) {
   };
 
   const onPointerDown = (e: React.PointerEvent) => {
-    if (exit) return; /* let the tuck finish first */
     e.preventDefault();
     frontRef.current?.setPointerCapture(e.pointerId);
     dragRef.current = {
@@ -140,24 +138,11 @@ export function PhotoStack({ hidden }: { hidden: boolean }) {
     dragRef.current = null;
     if (!d) { setDrag(null); return; }
     const { dismiss } = flingOutcome(d.dx, d.dy, d.vx, d.vy);
+    setDrag(null);
     if (dismiss && PHOTOS.length > 1) {
-      /*
-       * The reference move: the released card heads straight back to the
-       * deck while its z-order drops - it slides in UNDER the new front
-       * card and lands in the rearmost fan slot. We reorder immediately,
-       * pin the (now rear) card at its dragged pose for one frame, then
-       * let the spring carry it home.
-       */
-      const front = order[0];
-      setExit({ idx: front, dx: d.dx, dy: d.dy, rot: d.dx * 0.04 });
+      /* re-rank: the front card's own element glides from the hand to
+         the rear slot; the promoted card settles into the centre */
       setOrder((o) => [...o.slice(1), o[0]]);
-      setDrag(null);
-      requestAnimationFrame(() => requestAnimationFrame(() => {
-        setExit((x) => (x && x.idx === front ? { ...x, dx: NaN, dy: NaN, rot: NaN } : x));
-        setTimeout(() => setExit(null), 500);
-      }));
-    } else {
-      setDrag(null); /* the CSS spring carries it home */
     }
   };
 
@@ -172,68 +157,57 @@ export function PhotoStack({ hidden }: { hidden: boolean }) {
     if (el && el.complete) el.classList.add('ld');
   };
 
-  /* deepest first so natural paint order matches z-index */
-  const backs: { depth: number; idx: number }[] = [];
-  for (let depth = nBacks; depth >= 1; depth--) {
-    if (order.length > depth) backs.push({ depth, idx: order[depth] });
-  }
+  /*
+   * One element per photo, for life. Depth = current position in the
+   * deck; the element's key never changes, so every role change is a
+   * pure CSS transition from wherever the card currently is.
+   */
+  const cards = PHOTOS.map((src, idx) => {
+    const depth = order.indexOf(idx);
+    if (depth < 0 || depth > nBacks) return null;
+    const isFront = depth === 0;
+
+    let transform: string | undefined;
+    let cls = `pcard ${isFront ? 'front' : 'back'}`;
+    if (isFront && drag) {
+      transform = `translate(${drag.dx}px, ${drag.dy}px) rotate(${drag.dx * 0.04}deg)`;
+      if (dragging) cls += ' drag'; /* live under the hand, no easing */
+    } else if (!isFront) {
+      const p = stackPose(depth - promote);
+      transform =
+        `translate(${p.fx * rect.w}px, ${p.fy * rect.w}px) rotate(${p.rot}deg)`;
+      if (dragging) cls += ' live'; /* promotion tracks the hand */
+    }
+
+    return (
+      <div
+        key={`ph-${idx}`}
+        ref={isFront ? (el) => { frontRef.current = el; } : undefined}
+        className={cls}
+        style={{ transform, zIndex: 20 - depth }}
+        onPointerDown={isFront ? onPointerDown : undefined}
+        onPointerMove={isFront ? onPointerMove : undefined}
+        onPointerUp={isFront ? onPointerUp : undefined}
+        onPointerCancel={isFront ? onPointerUp : undefined}
+      >
+        <img
+          ref={markLoaded}
+          src={src}
+          alt={isFront ? 'Nikunj More' : ''}
+          draggable={false}
+          onLoad={(e) => e.currentTarget.classList.add('ld')}
+        />
+        {isFront && <div className="psheen" aria-hidden="true" />}
+      </div>
+    );
+  });
 
   return (
     <div
       className={`pstack${hidden ? ' off' : ''}`}
       style={{ left: rect.x, top: rect.y, width: rect.w, height: rect.h }}
     >
-      {backs.map(({ depth, idx }) => {
-        const isExiting = exit !== null && exit.idx === idx;
-        let transform: string;
-        let cls = 'pcard back';
-        if (isExiting && Number.isFinite(exit.dx)) {
-          /* pinned at the released drag pose, one frame, no transition */
-          transform = `translate(${exit.dx}px, ${exit.dy}px) rotate(${exit.rot}deg)`;
-          cls += ' live';
-        } else {
-          const p = stackPose(depth - promote);
-          transform =
-            `translate(${p.fx * rect.w}px, ${p.fy * rect.w}px) rotate(${p.rot}deg)`;
-          if (dragging) cls += ' live'; /* promotion tracks the hand, no easing */
-          if (isExiting) cls += ' tuck'; /* the springy slide-under */
-        }
-        return (
-          <div key={`ph-${idx}`} className={cls} style={{ transform, zIndex: 10 - depth }}>
-            <img
-              ref={markLoaded}
-              src={PHOTOS[idx]}
-              alt=""
-              draggable={false}
-              onLoad={(e) => e.currentTarget.classList.add('ld')}
-            />
-          </div>
-        );
-      })}
-
-      <div
-        ref={frontRef}
-        className={`pcard front${dragging ? ' drag' : ''}`}
-        style={{
-          transform: drag
-            ? `translate(${drag.dx}px, ${drag.dy}px) rotate(${drag.dx * 0.04}deg)`
-            : undefined,
-          zIndex: 20,
-        }}
-        onPointerDown={onPointerDown}
-        onPointerMove={onPointerMove}
-        onPointerUp={onPointerUp}
-        onPointerCancel={onPointerUp}
-      >
-        <img
-          ref={markLoaded}
-          src={PHOTOS[order[0]]}
-          alt="Nikunj More"
-          draggable={false}
-          onLoad={(e) => e.currentTarget.classList.add('ld')}
-        />
-        <div className="psheen" aria-hidden="true" />
-      </div>
+      {cards}
     </div>
   );
 }

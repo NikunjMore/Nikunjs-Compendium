@@ -265,6 +265,18 @@ export function normalizeWheel(dy, dx = 0, mode = 0, { line = 33, page = 800, ma
   return clamp((dy + dx) * k, -max, max);
 }
 
+/*
+ * wheelSteps: turn a stream of wheel deltas into whole album steps.
+ * Deltas accumulate (trackpads drip 2-10 px events; mouse notches land
+ * ~100 px at once); every `notch` px of travel emits one step and the
+ * remainder carries over. One flick of a mouse wheel = exactly one step.
+ */
+export function wheelSteps(acc, delta, notch = 90) {
+  const a = acc + delta;
+  const steps = Math.trunc(a / notch);
+  return { steps, rest: a - steps * notch };
+}
+
 /* "just now", "4m ago", "3h ago", "2d ago", "5w ago" */
 export function timeAgo(thenMs, nowMs = Date.now()) {
   if (!Number.isFinite(thenMs)) return '';

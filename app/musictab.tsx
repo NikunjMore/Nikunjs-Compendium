@@ -11,9 +11,9 @@
  * again, in both directions (wrapDelta does the shortest-way maths).
  *
  * Interaction, by design calm:
- *   - the scroll wheel / trackpad (and touch-drag) moves the row, and a
- *     moment after input stops it snaps to the nearest cover, so there
- *     is always a card sitting flat, face-on, front and centre
+ *   - the wheel is quantized: one notch advances exactly one album
+ *     (trackpad travel accumulates into the same steps); touch drags
+ *     free-scroll and snap to the nearest cover a moment after release
  *   - clicking anywhere glides the nearest cover to the centre
  *   - the centred cover shows name / artist / play count / when I last
  *     heard it / my rating and thoughts
@@ -28,8 +28,8 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { getRecentTracks, artLarge, trackKey, type Track } from './lastfm';
 import { noteFor } from './music-notes';
 import {
-  clamp, coverTransform, wrapDelta, normalizeWheel, centerIndex, nearestCover,
-  lerpExp, timeAgo,
+  clamp, coverTransform, wrapDelta, normalizeWheel, wheelSteps, centerIndex,
+  nearestCover, lerpExp, timeAgo,
 } from '../utils.js';
 
 const N = 25;
@@ -54,6 +54,7 @@ export function MusicTab({ active }: { active: boolean }) {
   const suppressClick = useRef(false);
   const tracksRef = useRef<Track[] | null>(null);
   const inputAt = useRef(0); /* last wheel/drag timestamp, for the snap */
+  const wheelAcc = useRef(0); /* partial wheel travel toward the next step */
 
   /* ---- data: fetch now, then keep fetching while the tab is open ---- */
   const load = useCallback(async () => {
@@ -145,10 +146,18 @@ export function MusicTab({ active }: { active: boolean }) {
     return () => cancelAnimationFrame(raf.current);
   }, [active, reduced, n, spacing, cardW, opts]);
 
-  /* wheel / trackpad drives the row */
+  /* wheel / trackpad: quantized - one notch moves exactly one album */
   const onWheel = (e: React.WheelEvent) => {
-    scrollTgt.current += normalizeWheel(e.deltaY, e.deltaX, e.deltaMode);
-    inputAt.current = performance.now();
+    const now = performance.now();
+    if (now - inputAt.current > 400) wheelAcc.current = 0; /* stale partials die */
+    const px = normalizeWheel(e.deltaY, e.deltaX, e.deltaMode);
+    const { steps, rest } = wheelSteps(wheelAcc.current, px);
+    wheelAcc.current = rest;
+    if (steps !== 0) {
+      scrollTgt.current =
+        (Math.round(scrollTgt.current / spacing) + steps) * spacing;
+    }
+    inputAt.current = now;
   };
 
   /* touch drag (with a flick of momentum) */

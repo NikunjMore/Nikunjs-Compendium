@@ -202,7 +202,7 @@ test('refillWindow scales with the bite and never breaks the 20 s budget', () =>
 /* ================= v10 additions ================= */
 
 import {
-  lerpExp, coverTransform, wrapDelta, normalizeWheel, timeAgo, centerIndex, nearestCover, dockMagnify,
+  lerpExp, coverTransform, wrapDelta, normalizeWheel, wheelSteps, timeAgo, centerIndex, nearestCover, dockMagnify,
   stackPose, dragPromote, flingOutcome, exciteTarget, pickImage, uniqueTracks,
   normalizeRecent, fmtDuration, recoveryBand, fmtStrain,
 } from './utils.js';
@@ -279,6 +279,17 @@ test('normalizeWheel converts lines/pages to px and clamps a notch', () => {
   assert.equal(normalizeWheel(1, 0, 2), 260, 'page mode hits the clamp');
   assert.equal(normalizeWheel(-9000), -260, 'clamped both ways');
   assert.equal(normalizeWheel(40, 25), 65, 'deltaX folds in (trackpads)');
+});
+
+test('wheelSteps: one mouse notch is one album, trackpads accumulate', () => {
+  assert.deepEqual(wheelSteps(0, 100), { steps: 1, rest: 10 });
+  assert.deepEqual(wheelSteps(0, -100), { steps: -1, rest: -10 });
+  assert.deepEqual(wheelSteps(0, 30), { steps: 0, rest: 30 });
+  assert.deepEqual(wheelSteps(70, 30), { steps: 1, rest: 10 });
+  assert.deepEqual(wheelSteps(-60, -40), { steps: -1, rest: -10 });
+  const big = wheelSteps(0, 260);
+  assert.equal(big.steps, 2, 'a hard flick can take two steps');
+  assert.ok(Math.abs(big.rest) < 90);
 });
 
 test('timeAgo buckets read like a human wrote them', () => {

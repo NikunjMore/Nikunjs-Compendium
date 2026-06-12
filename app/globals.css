@@ -479,14 +479,14 @@ main.off {
   overflow: hidden;
   background: #0e0e0e;
   box-shadow: 0 18px 48px rgba(0, 0, 0, 0.55);
-  transition: transform 0.55s var(--spring);
+  /* every role change (hand -> rear slot, promoted -> centre) rides this */
+  transition: transform 0.5s cubic-bezier(0.22, 1.1, 0.36, 1);
 }
 .pcard.back { border: 1px solid #242424; }
 .pcard.front { cursor: grab; touch-action: none; }
 .pcard.front:active { cursor: grabbing; }
 .pcard.front.drag { transition: none; }
 .pcard.live { transition: none; } /* deck promotion tracks the hand */
-.pcard.tuck { transition: transform 0.45s cubic-bezier(0.22, 1.1, 0.36, 1); } /* the slide-under */
 
 .pcard img {
   width: 100%;
