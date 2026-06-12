@@ -155,6 +155,21 @@ a:hover { text-decoration-color: #ffffff; }
 .tok:active { background: #2a2a2a; }
 .tok:focus-visible { outline: 1px solid #8a8a8a; outline-offset: 2px; }
 
+/*
+ * The box arrives with its words: until the first character inside a token
+ * has been revealed by the engine (spaces are born revealed, so they
+ * don't count), the grey chrome stays invisible, then
+ * fades in on the .tok transition. Browsers without :has() keep the old
+ * always-visible behavior, and so do crawlers / no-JS readers (.js gate).
+ */
+@supports selector(:has(*)) {
+  .js .tok:not(:has(.ch.on:not(.sp))) {
+    background: transparent;
+    border-color: transparent;
+    box-shadow: none;
+  }
+}
+
 /* a visited token: box gone, words stay, dimmed */
 .was { color: var(--dim); }
 .was .ic { color: #cfcfcf; }
@@ -166,6 +181,21 @@ a:hover { text-decoration-color: #ffffff; }
   display: inline-block;
   vertical-align: -0.16em;
   margin: 0 0.14em 0 0.18em;
+}
+
+/*
+ * Icons land with their words, not before. Every inline icon directly
+ * follows the element that holds its word, so it stays hidden until a
+ * real (non-space) character in that element has been revealed, then
+ * eases in. Same
+ * :has() / .js gating as the token boxes above.
+ */
+@supports selector(:has(*)) {
+  .js .ic {
+    opacity: 0;
+    transition: opacity 0.5s var(--spring);
+  }
+  .js :has(.ch.on:not(.sp)) + .ic { opacity: 1; }
 }
 
 /* ---------------- character reveal ---------------- */
@@ -186,6 +216,13 @@ footer {
   margin-top: calc(var(--r, 1.4) * 13px);
   border-top: 1px solid #1c1c1c;
   padding-top: 10px;
+  /*
+   * The footer escapes the 920px column and runs the full viewport,
+   * passing under the portrait: from the column's left padding to a
+   * matching 32px short of the right edge.
+   */
+  width: calc(100vw - clamp(28px, 4vw, 52px) - 32px);
+  max-width: none;
   font-family: var(--mono);
   font-size: 12px;
   color: var(--faint);
@@ -255,7 +292,7 @@ footer a:hover { color: #ffffff; }
   .hdr { margin: 34px 0 6px; }
   p { margin: 10px 0; }
   .tok { padding: 0 6px 1px; }
-  footer { flex-direction: column; align-items: flex-start; gap: 10px; margin-top: 48px; }
+  footer { flex-direction: column; align-items: flex-start; gap: 10px; margin-top: 48px; width: calc(100vw - 40px); }
 }
 
 @media (prefers-reduced-motion: reduce) {
