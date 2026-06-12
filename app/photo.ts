@@ -503,58 +503,82 @@ export class PhotoLayer {
     return [r.x + this.uvXArr[i] * r.w, r.y + this.uvYArr[i] * r.h];
   }
 
-  private take(indices: number[]): [number, number][] {
-    const nowS = performance.now() / 1000;
-    const out: [number, number][] = [];
-    if (!indices.length) return out;
-    /*
-     * Replacement dots stream in from off-screen over a window that scales
-     * with the bite: small takes heal in a couple of seconds, the whole
-     * portrait inside 20 s (window 14 s + launch 0.8 s + flight <=2.6 s).
-     */
-    const win = refillWindow(indices.length, this.uvXArr.length);
-    const r = this.screenRect();
-    const W = innerWidth, H = innerHeight;
-    for (const i of indices) {
-      this.hideTArr[i]   = nowS;
-      this.refillTArr[i] = nowS + 0.8 + this.rng() * win;
-      /* launch point: beyond the right/top/bottom screen edges */
-      const side = this.rng();
-      let sx: number, sy: number;
-      if (side < 0.5)       { sx = W + 60 + this.rng() * 160; sy = this.rng() * H; }
-      else if (side < 0.75) { sx = r.x + (this.rng() * 1.4 - 0.2) * r.w; sy = -70 - this.rng() * 120; }
-      else                  { sx = r.x + (this.rng() * 1.4 - 0.2) * r.w; sy = H + 70 + this.rng() * 120; }
-      this.fromAttr.setXY(i, (sx - r.x) / Math.max(r.w, 1), (sy - r.y) / Math.max(r.h, 1));
-      this.hiddenIndices.push(i);
-      out.push(this.cellScreen(i));
-    }
-    this.hideAttr.needsUpdate   = true;
-    this.refillAttr.needsUpdate = true;
-    this.fromAttr.needsUpdate   = true;
-    return out;
-  }
 
   /*
-   * Take up to n cells nearest to the screen point (tx, ty): the face of
-   * the portrait closest to the expanding text empties out and the engine
-   * launches its dots from those exact spots. Cells refill in under 20 s.
+   * The directional dent.  An expansion bites about a fifteenth of the
+   * portrait from the face nearest the click (the engine launches its
+   * borrowed dots from the first `n` of those cells).  The bite heals in
+   * two visible streams: cells slide in leftward from deeper inside the
+   * portrait, while the portrait's right band - which lent those dots -
+   * is rebuilt by fresh dots pouring in from the right edge of the
+   * screen.  Every flight lands inside the 20 s budget, faster for
+   * smaller bites (refillWindow).
    */
   takeCellsToward(tx: number, ty: number, n: number): [number, number][] {
     if (!this.visible() || !this.uvXArr) return [];
     const r = this.screenRect();
-    const tUvX = (tx - r.x) / r.w;
-    const tUvY = (ty - r.y) / r.h;
+    const tUvX = (tx - r.x) / Math.max(r.w, 1);
+    const tUvY = (ty - r.y) / Math.max(r.h, 1);
     const total = this.uvXArr.length;
+    const rng = this.rng;
+
+    /* the bite: ~1/15 of the portrait, nearest the click */
+    const dent = Math.round(total / 15);
     const cand: { i: number; d: number }[] = [];
-    /* stride the grid so the sort stays cheap on ~200k cells */
-    for (let i = 0; i < total; i += 3) {
+    for (let i = 0; i < total; i += 2) {
       if (this.hideTArr[i] >= 0) continue;
       const dx = this.uvXArr[i] - tUvX;
       const dy = this.uvYArr[i] - tUvY;
       cand.push({ i, d: dx * dx + dy * dy });
     }
     cand.sort((a, b) => a.d - b.d);
-    return this.take(cand.slice(0, n).map((c) => c.i));
+    const bite = cand.slice(0, Math.min(Math.max(n, dent), cand.length)).map((c) => c.i);
+    if (!bite.length) return [];
+
+    const nowS = performance.now() / 1000;
+    const win  = refillWindow(bite.length * 2, total);
+
+    /* bitten cells heal by sliding in from deeper right inside the photo */
+    for (const i of bite) {
+      this.hideTArr[i]   = nowS;
+      this.refillTArr[i] = nowS + 0.45 + rng() * win * 0.65;
+      this.fromAttr.setXY(
+        i,
+        this.uvXArr[i] + 0.40 + rng() * 0.12,
+        this.uvYArr[i] + (rng() - 0.5) * 0.08,
+      );
+      this.hiddenIndices.push(i);
+    }
+
+    /* the right band lent those dots: rebuild it from off-screen right */
+    const band: number[] = [];
+    for (let i = 1; i < total && band.length < bite.length * 2; i += 2) {
+      if (this.hideTArr[i] >= 0) continue;
+      if (this.uvXArr[i] > 0.55) band.push(i);
+    }
+    /* partial shuffle, take as many as were bitten */
+    const m = Math.min(bite.length, band.length);
+    for (let j = 0; j < m; j++) {
+      const k = j + Math.floor(rng() * (band.length - j));
+      const tmp = band[j]; band[j] = band[k]; band[k] = tmp;
+    }
+    const W = innerWidth;
+    for (let j = 0; j < m; j++) {
+      const i = band[j];
+      this.hideTArr[i]   = nowS + 0.25;     /* lags the bite a beat */
+      this.refillTArr[i] = nowS + 0.9 + rng() * win;
+      const sx = W + 60 + rng() * 220;
+      const sy = r.y + this.uvYArr[i] * r.h + (rng() - 0.5) * 120;
+      this.fromAttr.setXY(i, (sx - r.x) / Math.max(r.w, 1), (sy - r.y) / Math.max(r.h, 1));
+      this.hiddenIndices.push(i);
+    }
+
+    this.hideAttr.needsUpdate   = true;
+    this.refillAttr.needsUpdate = true;
+    this.fromAttr.needsUpdate   = true;
+
+    /* the engine launches its word dots from the front of the bite */
+    return bite.slice(0, n).map((i) => this.cellScreen(i));
   }
 
 

@@ -147,15 +147,24 @@ a:hover { text-decoration-color: #ffffff; }
     border-color 0.22s var(--spring),
     box-shadow   0.22s var(--spring);
 }
-.tok:hover   { background: var(--box-hover); border-color: #4d4d4d; box-shadow: 0 0 14px rgba(255,255,255,0.05); }
+.tok:hover   { background: var(--box-hover); border-color: #4d4d4d; box-shadow: 0 0 14px rgba(255,255,255,0.05); animation-play-state: paused; }
 .tok:active  { background: #2a2a2a; }
 .tok:focus-visible { outline: 1px solid #8a8a8a; outline-offset: 2px; }
 
 @supports selector(:has(*)) {
   .js .tok:not(:has(.ch.on:not(.sp))) {
     background: transparent; border-color: transparent; box-shadow: none;
+    animation: none;
   }
 }
+
+/* a soft breathing pulse says: this box is clickable */
+@keyframes tokpulse {
+  0%, 100% { border-color: var(--line);  box-shadow: 0 0 0 rgba(255, 255, 255, 0); }
+  50%      { border-color: #5a5a5a;      box-shadow: 0 0 13px rgba(255, 255, 255, 0.11); }
+}
+.tok { animation: tokpulse 2.3s ease-in-out infinite; }
+.reduced .tok { animation: none; }
 
 .was { color: var(--dim); }
 .was .ic { color: #cfcfcf; }
@@ -278,4 +287,5 @@ footer a:hover { color: #ffffff; }
   html { scroll-behavior: auto; }
   #cdot { animation: none; }
   .hdr, .tok { transition: none; }
+  .tok { animation: none; }
 }

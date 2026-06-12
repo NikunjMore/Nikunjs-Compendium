@@ -63,7 +63,7 @@ const FRAG = /* glsl */ `
   void main() {
     vec2  c = gl_PointCoord - 0.5;
     float d = length(c);
-    float a = smoothstep(0.5, 0.14, d) * vA;
+    float a = smoothstep(0.5, 0.20, d) * vA;
     if (a < 0.003) discard;
     gl_FragColor = vec4(vec3(1.0), a);
   }
@@ -183,8 +183,10 @@ export class DotEngine {
       this.py[i]    = r() * innerHeight;
       this.vx[i]    = (r() - 0.5) * 10;
       this.vy[i]    = (r() - 0.5) * 10;
-      this.baseA[i] = 0.07 + r() * 0.36;
-      this.size[i]  = 1.5 + r() * 1.7;
+      this.baseA[i] = 0.10 + r() * 0.42;
+      /* same species as the portrait dots: small and crisp, so dots can
+         drift between field and photo without changing identity */
+      this.size[i]  = 0.9 + r() * 0.9;
       this.seed[i]  = r();
       pos[i * 3]    = this.px[i];
       pos[i * 3 + 1]= this.py[i];
@@ -560,7 +562,7 @@ export class DotEngine {
     if (!items.length) return Promise.resolve();
 
     const free   = this.countFree();
-    const budget = clamp(Math.floor(free * 0.55), 900, 6000);
+    const budget = clamp(Math.floor(free * 0.75), 900, 9000);
     const stride = strideForBudget(est, budget);
     const estPts = Math.min(budget, Math.round(est / (stride * stride)));
 
@@ -583,8 +585,15 @@ export class DotEngine {
         if (dx * dx + dy * dy < 78400) nearby++;   /* within 280 px */
       }
       const shortfall = estPts - nearby;
-      if (shortfall > 40) {
-        starts = this.photo.takeCellsToward(origin.x, origin.y, Math.min(shortfall, 700));
+      const pr = this.photo.screenRect();
+      const nearPhoto =
+        origin.x > pr.x - 360 && origin.x < pr.x + pr.w + 360 &&
+        origin.y > pr.y - 360 && origin.y < pr.y + pr.h + 360;
+      if (shortfall > 40 || nearPhoto) {
+        starts = this.photo.takeCellsToward(
+          origin.x, origin.y,
+          clamp(shortfall, 160, 1500),
+        );
       }
     }
     /* borrowed cells stand in for the would-be farthest travellers */
