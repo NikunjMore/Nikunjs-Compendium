@@ -163,25 +163,25 @@ const VERT = /* glsl */ `
       }
     }
 
-    /* ---- cursor soft lens ----------------------------------------------- */
+    /* ---- cursor light (no warping: dots glow in place, never move) ------ */
+    /*
+     * A soft lamp follows the pointer across the portrait.  Dots inside it
+     * brighten and crisp up slightly, with a faint slow shimmer, but every
+     * dot keeps its exact position - the face never distorts.
+     */
     vec2  d    = pos - uPtr;
     float r    = max(length(d), 0.001);
-    float fall = exp(-(r * r) / 18000.0);   /* sigma ~95 px */
-    vec2  dir  = d / r;
-    vec2  tang = vec2(-dir.y, dir.x);
-    pos += (
-      dir  * (6.0 + 1.5 * sin(uTime * 1.3 + aSeed * 19.0)) +
-      tang * 3.0 * sin(uTime * 1.1 + aSeed * 13.0)
-    ) * fall * uHov;
+    float fall = exp(-(r * r) / 22000.0) *
+                 (1.0 + 0.10 * sin(uTime * 1.4 + aSeed * 17.0));
 
     /* ---- alpha ----------------------------------------------------------- */
     float tw       = 0.97 + 0.03 * sin(aSeed * TAU + uTime * (0.7 + aSeed));
-    float homeAlph = aHome * tw * (1.0 + 0.12 * fall * uHov) * uEnergy;
+    float homeAlph = aHome * tw * (1.0 + 0.45 * fall * uHov) * uEnergy;
     float freeAlph = 0.13 * tw;   /* escaped dots blend into the free field */
     float a        = mix(homeAlph, freeAlph, escapeFrac);
     vA = a * eb * uFade * uVis * hideMul;
 
-    float sz = uSpacing * (0.66 + 0.50 * aLum) * (1.0 + 0.35 * fall * uHov);
+    float sz = uSpacing * (0.66 + 0.50 * aLum) * (1.0 + 0.18 * fall * uHov);
     gl_Position  = projectionMatrix * modelViewMatrix * vec4(pos, 0.0, 1.0);
     gl_PointSize = clamp(sz, 0.5, 3.2) * uDpr;
   }
