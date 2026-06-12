@@ -198,3 +198,184 @@ export function refillWindow(taken, total, { base = 1.5, span = 18, cap = 14 } =
   const frac = total > 0 ? clamp(taken / total, 0, 1) : 0;
   return Math.min(cap, base + span * frac);
 }
+
+/* ================= v10 additions ================= */
+
+/* Frame-rate independent exponential approach: returns the new current
+   value after dt seconds chasing `target` at `rate` (1/s). */
+export function lerpExp(current, target, dt, rate = 8) {
+  return current + (target - current) * (1 - Math.exp(-rate * dt));
+}
+
+/* ---------------- cover flow (music tab) ---------------- */
+
+/*
+ * coverTransform: where the i-th album card sits for a given scroll offset.
+ * The row reads like a louvered shutter (video ref #6): every card shares
+ * one tilt direction, and the card nearest the screen centre eases flat
+ * (face-on), lifts toward the viewer and grows so its name/notes can pop.
+ *
+ *   i       card index, 0..n-1 (0 = most recent listen)
+ *   scroll  px along the row; scroll = i*spacing centres card i
+ *   n       total cards (z-order: left stacks over right, centre on top)
+ *
+ * Returns { x, ry, z, s, focus, zi }:
+ *   x  px from screen centre   ry  rotateY deg (0 = facing viewer)
+ *   z  translateZ px           s   scale
+ *   focus 0..1 (1 = centred)   zi  integer z-index
+ */
+export function coverTransform(i, scroll, n, {
+  spacing = 150, tilt = 56, lift = 170, spread = 120, window: win = 1.45,
+} = {}) {
+  const d = (i * spacing - scroll) / spacing;
+  const a = Math.abs(d);
+  const focus = a >= win ? 0 : Math.pow(1 - a / win, 2.2);
+  const x = d * spacing + Math.sign(d) * spread * Math.min(a, 1);
+  const ry = tilt * (1 - focus);
+  const z = lift * focus;
+  const s = 0.88 + 0.16 * focus;
+  const zi = (n - i) + Math.round(200 * focus);
+  return { x, ry, z, s, focus, zi };
+}
+
+/* Map a pointer x in [6%, 94%] of the viewport onto the full scroll range. */
+export function scrollFromPointer(mx, w, n, spacing = 150) {
+  const t = clamp((mx - w * 0.06) / (w * 0.88), 0, 1);
+  return t * (n - 1) * spacing;
+}
+
+/* Which card is closest to centre for a given scroll. */
+export function centerIndex(scroll, spacing, n) {
+  return clamp(Math.round(scroll / spacing), 0, Math.max(0, n - 1));
+}
+
+/* ---------------- dock magnification (tab bar) ---------------- */
+
+/*
+ * dockMagnify: macOS-style magnification (video ref #3). `dist` is the
+ * horizontal distance in px from the pointer to an icon centre. Smooth
+ * cosine-squared bell: 1+boost at the pointer, exactly 1 at the radius.
+ */
+export function dockMagnify(dist, { radius = 110, boost = 0.55 } = {}) {
+  const a = Math.abs(dist);
+  if (a >= radius) return 1;
+  const c = Math.cos((Math.PI * a) / (2 * radius));
+  return 1 + boost * c * c;
+}
+
+/* ---------------- photo card stack ---------------- */
+
+/*
+ * stackLayout: the resting fan for the k-th card from the top (k=0 is the
+ * photo you see; video ref #4). Alternating small rotations, slight
+ * upward peek so each deeper card shows a corner.
+ */
+export function stackLayout(k, nBacks = 3) {
+  if (k <= 0) return { rot: 0, dx: 0, dy: 0 };
+  const kk = Math.min(k, nBacks + 1);
+  const sign = kk % 2 === 1 ? -1 : 1;
+  return {
+    rot: sign * (2.5 + kk * 2.6),
+    dx: sign * kk * 5,
+    dy: -kk * 6,
+  };
+}
+
+/*
+ * flingOutcome: when a dragged card is released, does it fly away (cycle
+ * to the back of the stack) or spring home? Distance or velocity can win.
+ * Returns { dismiss, exitX, exitY } with a unit-ish exit direction.
+ */
+export function flingOutcome(dx, dy, vx, vy, {
+  distThresh = 120, velThresh = 900,
+} = {}) {
+  const dist = Math.hypot(dx, dy);
+  const vel = Math.hypot(vx, vy);
+  const dismiss = dist > distThresh || vel > velThresh;
+  let ex = dx, ey = dy;
+  if (vel > 220) { ex = vx; ey = vy; }
+  const m = Math.hypot(ex, ey) || 1;
+  return { dismiss, exitX: ex / m, exitY: ey / m };
+}
+
+/* ---------------- cursor flare (background dots, video ref #5) ------- */
+
+/*
+ * exciteTarget: how brightly a dot at squared-distance d2 from the cursor
+ * should flare. 1 at the cursor, 0 at/after `radius`, eased so the bright
+ * core is tight and the falloff is soft.
+ */
+export function exciteTarget(d2, radius = 130) {
+  const r2 = radius * radius;
+  if (d2 >= r2) return 0;
+  return Math.pow(1 - Math.sqrt(d2) / radius, 1.6);
+}
+
+/* ---------------- Last.fm ---------------- */
+
+/* Choose the best art URL from a Last.fm image array. */
+export function pickImage(images) {
+  if (!Array.isArray(images)) return '';
+  const by = {};
+  for (const im of images) by[im.size] = im['#text'] || '';
+  return by.extralarge || by.large || by.medium ||
+    images.map((i) => i['#text']).filter(Boolean).pop() || '';
+}
+
+/* Keep the first occurrence (most recent listen) of each artist+name. */
+export function uniqueTracks(tracks, n = 20) {
+  const seen = new Set();
+  const out = [];
+  for (const t of tracks) {
+    const key = `${t.artist} — ${t.name}`.toLowerCase();
+    if (seen.has(key)) continue;
+    seen.add(key);
+    out.push(t);
+    if (out.length >= n) break;
+  }
+  return out;
+}
+
+/*
+ * normalizeRecent: raw user.getrecenttracks JSON -> the n most recent
+ * distinct songs, newest first. Survives the API quirks: a single track
+ * arrives as an object, `extended=1` nests artist under .name, otherwise
+ * under '#text'; the now-playing entry carries @attr.nowplaying.
+ */
+export function normalizeRecent(json, n = 20) {
+  let list = json?.recenttracks?.track ?? [];
+  if (!Array.isArray(list)) list = [list];
+  const mapped = list.map((t) => ({
+    artist: t.artist?.name ?? t.artist?.['#text'] ?? '',
+    name: t.name ?? '',
+    album: t.album?.['#text'] ?? '',
+    art: pickImage(t.image),
+    url: t.url ?? '',
+    nowPlaying: t['@attr']?.nowplaying === 'true',
+    playedAt: t.date?.uts ? Number(t.date.uts) * 1000 : null,
+  })).filter((t) => t.name && t.artist);
+  return uniqueTracks(mapped, n);
+}
+
+/* ---------------- Whoop formatting ---------------- */
+
+/* 27225000 ms -> "7h 34m" (rounds minutes). */
+export function fmtDuration(ms) {
+  if (!Number.isFinite(ms) || ms <= 0) return '0h 0m';
+  const mins = Math.round(ms / 60000);
+  return `${Math.floor(mins / 60)}h ${mins % 60}m`;
+}
+
+/* Whoop recovery zones: 0-33 red, 34-66 yellow, 67-100 green. */
+export function recoveryBand(score) {
+  if (!Number.isFinite(score)) return 'unknown';
+  if (score < 34) return 'low';
+  if (score < 67) return 'moderate';
+  return 'high';
+}
+
+/* Strain renders with one decimal, clamped to Whoop's 0-21 scale. */
+export function fmtStrain(x) {
+  if (!Number.isFinite(x)) return '0.0';
+  return (Math.round(clamp(x, 0, 21) * 10) / 10).toFixed(1);
+}

@@ -26,6 +26,9 @@ const PATHS: Record<string, string> = {
   pin: '<path d="M20 10c0 6-8 12-8 12s-8-6-8-12a8 8 0 0 1 16 0z"/><circle cx="12" cy="10" r="3"/>',
   mail: '<rect x="2" y="4" width="20" height="16" rx="2"/><path d="M22 7l-10 6L2 7"/>',
   people: '<circle cx="9" cy="8" r="3"/><path d="M3.5 20c0-3 2.5-5 5.5-5s5.5 2 5.5 5"/><circle cx="17" cy="9" r="2.4"/><path d="M16 15.2c2.6.4 4.5 2.2 4.5 4.8"/>',
+  person: '<circle cx="12" cy="8" r="3.6"/><path d="M5 20c0-3.7 3.1-6 7-6s7 2.3 7 6"/>',
+  pulse: '<path d="M3 12.5h3.5L9 6l4.5 12 2.5-5.5H21"/>',
+  ext: '<path d="M14 4h6v6M20 4l-9 9"/><path d="M19 13v5a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V7a2 2 0 0 1 2-2h5"/>',
 };
 
 export function Ic({ n }: { n: string }) {

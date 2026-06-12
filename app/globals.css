@@ -290,3 +290,406 @@ footer a:hover { color: #ffffff; }
   .hdr, .tok { transition: none; }
   .tok { animation: none; }
 }
+
+/* ======================================================================
+   v10 — tabs, dock, border beam, photo deck, cover flow, recovery board
+   ====================================================================== */
+
+/* ---- tab layers: fade beneath the ever-running dot field --------------- */
+main {
+  transition: opacity 0.45s ease, transform 0.45s var(--spring);
+}
+main.off {
+  opacity: 0;
+  transform: translateY(8px);
+  pointer-events: none;
+  visibility: hidden;
+  transition: opacity 0.45s ease, transform 0.45s var(--spring), visibility 0s 0.45s;
+}
+
+/* ---- #1: the border beam on the next box to click ---------------------- */
+@property --bba {
+  syntax: '<angle>';
+  inherits: false;
+  initial-value: 0deg;
+}
+
+.tok.beam {
+  position: relative;
+  animation: none; /* the beam replaces the breathing pulse */
+  border-color: #3a3a3a;
+}
+.tok.beam::before {
+  content: "";
+  position: absolute;
+  inset: -3px;
+  border-radius: 10px;
+  border: 1px solid rgba(255, 255, 255, 0.10);
+  pointer-events: none;
+}
+.tok.beam::after {
+  content: "";
+  position: absolute;
+  inset: -3px;
+  border-radius: 10px;
+  padding: 1.5px;
+  background: conic-gradient(
+    from var(--bba),
+    transparent 0deg 6deg,
+    rgba(255, 255, 255, 0.95) 24deg,
+    transparent 42deg 186deg,
+    rgba(255, 255, 255, 0.6) 204deg,
+    transparent 222deg 360deg
+  );
+  -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
+  -webkit-mask-composite: xor;
+          mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
+          mask-composite: exclude;
+  animation: bbspin 3.4s linear infinite;
+  pointer-events: none;
+}
+@keyframes bbspin { to { --bba: 360deg; } }
+.reduced .tok.beam::after { animation: none; }
+
+/* ---- #3: the dock ------------------------------------------------------ */
+.dock {
+  position: fixed;
+  bottom: 14px;
+  left: 50%;
+  transform: translateX(-50%);
+  display: flex;
+  align-items: flex-end;
+  gap: 4px;
+  padding: 7px 9px;
+  background: rgba(15, 15, 15, 0.74);
+  border: 1px solid #262626;
+  border-radius: 16px;
+  backdrop-filter: blur(14px);
+  -webkit-backdrop-filter: blur(14px);
+  z-index: 9;
+  opacity: 0;
+  translate: 0 14px;
+  transition: opacity 0.7s ease, translate 0.7s var(--spring);
+}
+.dock.show { opacity: 1; translate: 0 0; }
+
+.dock button {
+  position: relative;
+  width: 40px;
+  height: 40px;
+  display: grid;
+  place-items: center;
+  background: transparent;
+  border: none;
+  border-radius: 11px;
+  color: #b9b9b9;
+  cursor: pointer;
+  transform-origin: 50% 100%;
+  transition: transform 0.11s ease-out, color 0.2s, background 0.2s;
+}
+.dock button:hover { color: #ffffff; }
+.dock button:focus-visible { outline: 1px solid #8a8a8a; outline-offset: 2px; }
+.dock button.active { color: #ffffff; background: #1e1e1e; }
+.dock button.active::after {
+  content: "";
+  position: absolute;
+  bottom: 2px;
+  left: 50%;
+  width: 3px;
+  height: 3px;
+  border-radius: 50%;
+  background: #eaeaea;
+  transform: translateX(-50%);
+}
+.dock button .ic { width: 21px; height: 21px; margin: 0; }
+
+.dtip {
+  position: absolute;
+  bottom: calc(100% + 13px);
+  left: 50%;
+  transform: translateX(-50%) translateY(4px);
+  background: #141414;
+  border: 1px solid #2c2c2c;
+  border-radius: 8px;
+  padding: 4px 10px;
+  font-family: var(--mono);
+  font-size: 11.5px;
+  letter-spacing: 0.02em;
+  color: #e8e8e8;
+  white-space: nowrap;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.16s ease, transform 0.16s var(--spring);
+}
+.dock button:hover .dtip,
+.dock button:focus-visible .dtip {
+  opacity: 1;
+  transform: translateX(-50%) translateY(0);
+}
+
+/* ---- #4: the photo deck ------------------------------------------------ */
+.pstack {
+  position: fixed;
+  z-index: 4; /* beneath the dot field (5): dots keep flying over the photo */
+  transition: opacity 0.45s ease;
+}
+.pstack.off { opacity: 0; pointer-events: none; visibility: hidden; transition: opacity 0.45s ease, visibility 0s 0.45s; }
+
+.pcard {
+  position: absolute;
+  inset: 0;
+  border-radius: 14px;
+  overflow: hidden;
+  background: #0e0e0e;
+  box-shadow: 0 18px 48px rgba(0, 0, 0, 0.55);
+  transition: transform 0.55s var(--spring);
+}
+.pcard.back { border: 1px solid #242424; }
+.pcard.front { cursor: grab; touch-action: none; }
+.pcard.front:active { cursor: grabbing; }
+.pcard.front.drag { transition: none; }
+
+.pcard img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+  opacity: 0;             /* solid after the one-time load fade */
+  transition: opacity 0.8s ease;
+  -webkit-user-drag: none;
+  user-select: none;
+}
+.pcard img.ld { opacity: 1; }
+
+.psheen {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  mix-blend-mode: screen;
+  opacity: 0;
+  transition: opacity 0.3s ease;
+  background: radial-gradient(
+    230px 230px at var(--shx, 50%) var(--shy, 50%),
+    rgba(255, 255, 255, 0.15),
+    transparent 70%
+  );
+}
+.pcard.front:hover .psheen { opacity: 1; }
+
+/* ---- music tab: the louvered cover flow (#6) --------------------------- */
+.music {
+  position: fixed;
+  inset: 0;
+  z-index: 2;
+  overflow: hidden;
+  cursor: grab;
+  transition: opacity 0.45s ease;
+}
+.music:active { cursor: grabbing; }
+.music.off { opacity: 0; pointer-events: none; visibility: hidden; transition: opacity 0.45s ease, visibility 0s 0.45s; }
+
+.mrow {
+  position: absolute;
+  left: 50%;
+  top: 44%;
+  width: 0;
+  height: 0;
+  transform-style: preserve-3d;
+}
+
+.mcard {
+  position: absolute;
+  left: 0;
+  top: 0;
+  border-radius: 18px;
+  overflow: hidden;
+  background: #101010;
+  box-shadow: 0 26px 64px rgba(0, 0, 0, 0.6);
+  will-change: transform;
+  transform-style: preserve-3d;
+  backface-visibility: hidden;
+}
+.mcard img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+  -webkit-user-drag: none;
+  user-select: none;
+}
+.mcard.skel {
+  border: 1px solid #1f1f1f;
+  background: linear-gradient(110deg, #0e0e0e 38%, #181818 50%, #0e0e0e 62%);
+  background-size: 220% 100%;
+  animation: shimmer 1.6s linear infinite;
+}
+@keyframes shimmer { to { background-position: -120% 0; } }
+
+.minfo {
+  position: absolute;
+  left: 50%;
+  bottom: 96px;
+  transform: translateX(-50%);
+  width: min(620px, 86vw);
+  text-align: center;
+  animation: inforise 0.45s var(--spring);
+}
+@keyframes inforise {
+  from { opacity: 0; transform: translateX(-50%) translateY(10px); }
+  to   { opacity: 1; transform: translateX(-50%) translateY(0); }
+}
+.mname {
+  font-size: calc(var(--fs, 1) * 19px);
+  font-weight: 650;
+  color: #ffffff;
+  letter-spacing: -0.01em;
+}
+.mnow {
+  margin-left: 10px;
+  font-family: var(--mono);
+  font-size: 10.5px;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: #050505;
+  background: #e6e6e6;
+  border-radius: 99px;
+  padding: 2px 8px;
+  vertical-align: 2px;
+}
+.martist { color: var(--dim); margin-top: 2px; }
+.mnote {
+  margin-top: 8px;
+  font-size: 14px;
+  color: var(--faint);
+}
+.mrate { font-family: var(--mono); letter-spacing: 0.06em; color: #cfcfcf; }
+.msep { margin: 0 8px; }
+.mthought { font-style: italic; }
+
+.mstate {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  transform: translate(-50%, -50%);
+  color: var(--dim);
+  z-index: 30;
+}
+.linkish {
+  font: inherit;
+  color: #ffffff;
+  background: none;
+  border: none;
+  padding: 0;
+  cursor: pointer;
+  text-decoration: underline dotted #6e6e6e;
+  text-underline-offset: 3px;
+}
+.linkish:hover { text-decoration-color: #ffffff; }
+
+/* reduced motion: an honest flat strip */
+.music.flat { overflow-x: auto; overflow-y: hidden; display: flex; align-items: center; }
+.mstrip { display: flex; gap: 18px; padding: 0 24px; }
+.mflat { margin: 0; flex: 0 0 auto; width: 200px; }
+.mflat img { width: 200px; height: 200px; border-radius: 12px; object-fit: cover; }
+.mflat figcaption { margin-top: 8px; font-size: 13px; color: var(--dim); }
+
+/* ---- activity tab: the recovery board ---------------------------------- */
+.activity {
+  position: fixed;
+  inset: 0;
+  z-index: 2;
+  display: grid;
+  place-items: center;
+  transition: opacity 0.45s ease;
+}
+.activity.off { opacity: 0; pointer-events: none; visibility: hidden; transition: opacity 0.45s ease, visibility 0s 0.45s; }
+
+.awrap { text-align: center; padding: 0 24px; max-width: 760px; width: 100%; }
+
+.astats {
+  display: flex;
+  justify-content: center;
+  gap: clamp(28px, 6vw, 72px);
+  flex-wrap: wrap;
+}
+.abig {
+  font-size: clamp(34px, 6.2vh, 54px);
+  font-weight: 700;
+  letter-spacing: -0.02em;
+  color: #ffffff;
+  line-height: 1.1;
+}
+.alab {
+  margin-top: 6px;
+  font-family: var(--mono);
+  font-size: 11.5px;
+  letter-spacing: 0.08em;
+  color: var(--dim);
+}
+.avitals {
+  margin-top: 26px;
+  color: var(--faint);
+  font-family: var(--mono);
+  font-size: 12.5px;
+  letter-spacing: 0.06em;
+}
+
+.aweek {
+  margin: 34px auto 0;
+  display: flex;
+  justify-content: center;
+  align-items: flex-end;
+  gap: clamp(10px, 2.4vw, 26px);
+}
+.aday { width: 30px; }
+.abars {
+  height: 74px;
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+  gap: 4px;
+}
+.abar { width: 7px; border-radius: 3px 3px 1px 1px; transition: height 0.6s var(--spring); }
+.abar.rec { background: #e8e8e8; }
+.abar.str { background: #565656; }
+.adlab {
+  margin-top: 7px;
+  font-family: var(--mono);
+  font-size: 10.5px;
+  color: var(--faint);
+  text-align: center;
+}
+
+.asynced {
+  margin-top: 30px;
+  font-family: var(--mono);
+  font-size: 11px;
+  letter-spacing: 0.08em;
+}
+.astate { color: var(--dim); }
+.astate .asmall { font-size: 13px; }
+.astate a { color: #ffffff; }
+.dim { color: var(--faint); }
+
+/* ---- small screens ------------------------------------------------------ */
+@media (max-width: 700px), (max-height: 620px) and (max-width: 900px) {
+  .dock { bottom: 10px; }
+  .dock button { width: 38px; height: 38px; }
+  .minfo { bottom: 84px; }
+  .mname { font-size: 17px; }
+  .aweek .aday:nth-child(n+8) { display: none; }
+  .pstack { z-index: 4; }
+  /* the page scrolls here: keep the footer clear of the floating dock */
+  main { padding-bottom: 84px; }
+}
+
+/* touch screens have no hover: a tap must never strand a tooltip */
+@media (hover: none) {
+  .dtip { display: none; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .dock, .dock button, .dtip, .pcard, .minfo { transition: none; animation: none; }
+  .tok.beam::after { animation: none; }
+  .abar { transition: none; }
+}

@@ -3,7 +3,10 @@
 /*
  * compendium.tsx
  * The whole page: prose, tokens, the WebGL dot field, the click counter,
- * and the intro orchestration.
+ * the intro orchestration — and, since v10, the three-tab shell. A
+ * macOS-style dock (bottom centre) switches between the compendium
+ * itself, the Last.fm cover flow, and the Whoop recovery board. The dot
+ * field never stops; tabs fade beneath it.
  */
 
 import {
@@ -12,6 +15,10 @@ import {
 import { getEngine, type DotEngine } from './engine';
 import { Ctx, T, Tok, type CompendiumApi } from './content';
 import { Ic } from './icons';
+import { Dock, type TabId } from './dock';
+import { PhotoStack } from './photostack';
+import { MusicTab } from './musictab';
+import { ActivityTab } from './activitytab';
 import { formatClicks } from '../utils.js';
 
 const CKEY = 'nc.clicks';
@@ -28,11 +35,21 @@ export default function Compendium() {
   const [mounted, setMounted] = useState(false);
   const [settled, setSettled] = useState(false);
   const [ping, setPing] = useState(0);
+  const [tab, setTab] = useState<TabId>('person');
 
-  /* counter: hydrate from localStorage after mount */
+  /* counter: hydrate from localStorage after mount; tab: from the hash */
   useEffect(() => {
     setMounted(true);
     try { setClicks(parseInt(localStorage.getItem(CKEY) || '0', 10) || 0); } catch { /* private mode */ }
+    const h = location.hash.replace('#', '');
+    if (h === 'music' || h === 'activity') setTab(h);
+  }, []);
+
+  const switchTab = useCallback((t: TabId) => {
+    setTab(t);
+    try {
+      history.replaceState(null, '', t === 'person' ? location.pathname : `#${t}`);
+    } catch { /* sandboxed iframes */ }
   }, []);
 
   const bump = useCallback(() => {
@@ -89,7 +106,8 @@ export default function Compendium() {
 
     void m.offsetHeight; /* flush layout before transitions return */
     m.classList.remove('measuring');
-    engineRef.current?.relayoutPhoto();
+    /* the photo deck re-measures its zone off this signal */
+    dispatchEvent(new Event('nc:relayout'));
   }, []);
 
   /*
@@ -214,9 +232,6 @@ export default function Compendium() {
       fitRhythm(); /* settle the final layout before sampling glyph targets */
       const engine = getEngine(canvasRef.current, reduced);
       engineRef.current = engine;
-      /* the portrait: same dots, own population, immune to the crowd dial */
-      engine.setPhotoSlot(slotRef.current);
-      engine.attachPhoto('/me.jpg');
 
       const root = rootRef.current;
       const blocks = Array.from(root.querySelectorAll<HTMLElement>('[data-block]'));
@@ -286,6 +301,26 @@ export default function Compendium() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open]);
 
+  /*
+   * The border beam (video ref #1) always rides the first still-clickable
+   * box in reading order — the highest, left-most one. Clicking it opens
+   * the box, so the beam hops to whatever became first; when every box
+   * has been opened the beam retires.
+   */
+  useEffect(() => {
+    if (!settled) return;
+    const root = rootRef.current;
+    if (!root) return;
+    const id = requestAnimationFrame(() => {
+      for (const el of Array.from(root.querySelectorAll<HTMLElement>('.tok.beam'))) {
+        el.classList.remove('beam');
+      }
+      const first = root.querySelector<HTMLElement>('button.tok');
+      first?.classList.add('beam');
+    });
+    return () => cancelAnimationFrame(id);
+  }, [open, settled]);
+
   useEffect(() => {
     let t = 0;
     const onResize = () => {
@@ -296,11 +331,13 @@ export default function Compendium() {
     return () => { clearTimeout(t); removeEventListener('resize', onResize); };
   }, [fitRhythm]);
 
+  const onPerson = tab === 'person';
+
   return (
     <Ctx.Provider value={api}>
       <canvas id="dots" ref={canvasRef} aria-hidden="true" />
 
-      <main ref={rootRef}>
+      <main ref={rootRef} className={onPerson ? '' : 'off'} aria-hidden={!onPerson}>
         <header>
           <h1 data-block><T text="Nikunj's Compendium" /></h1>
         </header>
@@ -406,6 +443,16 @@ export default function Compendium() {
           </span>
         </footer>
       </main>
+
+      {/* the portrait deck: plain DOM, solid photos, draggable (ref #4) */}
+      <PhotoStack hidden={!onPerson} />
+
+      {/* tab layers: mounted on first visit, then kept warm beneath the dots */}
+      <MusicTab active={tab === 'music'} />
+      <ActivityTab active={tab === 'activity'} />
+
+      {/* the dock (ref #3): person / music / activity */}
+      <Dock tab={tab} onTab={switchTab} show={settled} />
     </Ctx.Provider>
   );
 }

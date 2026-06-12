@@ -1,5 +1,5 @@
 /*
- * engine.ts  v4 - dot field with ocean swell, vortex swirl, and photo handoff.
+ * engine.ts  v10 - dot field with ocean swell, vortex swirl, cursor flare.
  *
  * Free dots ride four layered motions:
  *   1. A diagonal travelling swell (waveField): bands of motion sweep across
@@ -10,16 +10,23 @@
  *      pointer's own velocity flung into the wake.
  *   4. Per-dot turbulence so neighbours never move in lockstep.
  *
+ * Plus the cursor flare (video ref #5): every living dot tracks an
+ * "excite" level - 1 under the pointer, easing to 0 at 130 px - that
+ * lingers and decays as the pointer moves on. The shader turns excite
+ * into a brighter, larger dot with a hot core, so the cursor drags a
+ * field of igniting stars behind it. Position is never touched: words
+ * being built shimmer under the cursor but never warp.
+ *
  * Assembly: claim nearest free dots, damped springs, left-to-right
  * stagger, DOM chars fade in underneath.  Words are built exclusively by
- * these background dots - the portrait (photo.ts) is a separate, still
- * layer and is never touched.
+ * these background dots - the portrait (photostack.tsx) is plain DOM and
+ * lives outside this engine entirely.
  */
 
 import * as THREE from 'three';
-import { PhotoLayer, type LayoutOpts, type SlotRect } from './photo';
 import {
   clamp, mulberry32, curl2, waveField, buildSchedule, strideForBudget, poolCount,
+  exciteTarget,
 } from '../utils.js';
 
 const TAU = Math.PI * 2;
@@ -41,24 +48,31 @@ type Glyph = { pts: [number, number][]; h: number };
 const VERT = /* glsl */ `
   attribute float aSize;
   attribute float aAlpha;
+  attribute float aExcite;
   varying float vA;
+  varying float vE;
   uniform float uDpr;
   void main() {
     vA = aAlpha;
+    vE = aExcite;
     gl_Position  = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
-    gl_PointSize = aSize * uDpr;
+    gl_PointSize = aSize * uDpr * (1.0 + 0.95 * aExcite);
   }
 `;
 
 const FRAG = /* glsl */ `
   precision mediump float;
   varying float vA;
+  varying float vE;
   void main() {
     vec2  c = gl_PointCoord - 0.5;
     float d = length(c);
     float a = smoothstep(0.5, 0.14, d) * vA;
+    /* cursor flare: excited dots burn brighter with a hot, tight core */
+    a *= 1.0 + 1.8 * vE;
+    a += vE * smoothstep(0.22, 0.0, d) * 0.85;
     if (a < 0.003) discard;
-    gl_FragColor = vec4(vec3(1.0), a);
+    gl_FragColor = vec4(vec3(1.0), min(a, 1.0));
   }
 `;
 
@@ -79,17 +93,17 @@ export class DotEngine {
   private seekT!: Float32Array;
   private relT!:  Float32Array;
   private alpha!: Float32Array; private baseA!: Float32Array;
+  private exc!:   Float32Array;
   private size!:  Float32Array; private seed!:  Float32Array;
   private charOf!: Int32Array;
 
-  private posAttr!:   THREE.BufferAttribute;
-  private sizeAttr!:  THREE.BufferAttribute;
-  private alphaAttr!: THREE.BufferAttribute;
+  private posAttr!:    THREE.BufferAttribute;
+  private sizeAttr!:   THREE.BufferAttribute;
+  private alphaAttr!:  THREE.BufferAttribute;
+  private exciteAttr!: THREE.BufferAttribute;
 
   private recs:   Rec[]    = [];
   private active: number[] = [];
-  private photo:  PhotoLayer | null = null;
-  private slotEl: HTMLElement | null = null;
 
   private rng    = mulberry32(0x00c0ffee);
   private glyphs = new Map<string, Glyph>();
@@ -164,6 +178,7 @@ export class DotEngine {
     this.seekT   = new Float32Array(n);
     this.relT    = new Float32Array(n);
     this.alpha   = new Float32Array(n);
+    this.exc     = new Float32Array(n);
     this.baseA   = new Float32Array(n);
     this.size    = new Float32Array(n);
     this.seed    = new Float32Array(n);
@@ -184,14 +199,17 @@ export class DotEngine {
       pos[i * 3]    = this.px[i];
       pos[i * 3 + 1]= this.py[i];
     }
-    this.posAttr   = new THREE.BufferAttribute(pos, 3);
-    this.sizeAttr  = new THREE.BufferAttribute(this.size, 1);
-    this.alphaAttr = new THREE.BufferAttribute(this.alpha, 1);
+    this.posAttr    = new THREE.BufferAttribute(pos, 3);
+    this.sizeAttr   = new THREE.BufferAttribute(this.size, 1);
+    this.alphaAttr  = new THREE.BufferAttribute(this.alpha, 1);
+    this.exciteAttr = new THREE.BufferAttribute(this.exc, 1);
     this.posAttr.setUsage(THREE.DynamicDrawUsage);
     this.alphaAttr.setUsage(THREE.DynamicDrawUsage);
+    this.exciteAttr.setUsage(THREE.DynamicDrawUsage);
     this.geo.setAttribute('position', this.posAttr);
     this.geo.setAttribute('aSize',    this.sizeAttr);
     this.geo.setAttribute('aAlpha',   this.alphaAttr);
+    this.geo.setAttribute('aExcite',  this.exciteAttr);
   }
 
   private onResize  = () => this.resize();
@@ -218,30 +236,7 @@ export class DotEngine {
     this.kick();
   };
 
-  private slotPageRect(): SlotRect {
-    const el = this.slotEl;
-    if (!el || !el.isConnected) return null;
-    const cs = getComputedStyle(el);
-    if (cs.display === 'none') return null;
-    const r = el.getBoundingClientRect();
-    if (r.width < 40) return null;
-    return { x: r.left + scrollX, y: r.top + scrollY, w: r.width, h: r.height };
-  }
 
-  /* measured page anchors so the portrait can centre itself in the real
-     leftover space and stay clear of the footer rule on any aspect ratio */
-  private layoutOpts(): LayoutOpts {
-    let colRight = 792;
-    let footerTop = innerHeight;
-    const main = document.querySelector('main');
-    if (main) colRight = Math.max(520, Math.min(main.getBoundingClientRect().right, innerWidth));
-    const foot = document.querySelector('footer');
-    if (foot) {
-      const fr = foot.getBoundingClientRect();
-      if (fr.height > 0) footerTop = fr.top + scrollY;
-    }
-    return { colRight, footerTop };
-  }
 
   private resize() {
     if (!this.renderer || !this.mat) return;
@@ -253,7 +248,6 @@ export class DotEngine {
     this.camera.left   = 0; this.camera.right  = this.w;
     this.camera.top    = 0; this.camera.bottom = this.h;
     this.camera.updateProjectionMatrix();
-    this.photo?.layout(this.w, this.h, dpr, this.slotPageRect(), this.layoutOpts());
     if (this.active.length) this.finishAll();
   }
 
@@ -309,9 +303,18 @@ export class DotEngine {
     this.pointerVY *= Math.exp(-dt * 4);
     const pvx = this.pointerVX, pvy = this.pointerVY;
     const stir = 260 + Math.min(700, Math.hypot(pvx, pvy) * 34);
+    const exDecay = Math.exp(-dt * 2.4);
 
     for (let i = 0; i < this.N; i++) {
       const s = st[i];
+
+      /* cursor flare (video ref #5): dots near the pointer ignite, then
+         the glow lingers and fades as it moves on (utils.exciteTarget) */
+      const fdx = px[i] - this.pointerX;
+      const fdy = py[i] - this.pointerY;
+      const fe  = exciteTarget(fdx * fdx + fdy * fdy, 130);
+      const eP  = this.exc[i] * exDecay;
+      this.exc[i] = fe > eP ? fe : eP;
 
       if (s === DEAD) {
         if (alpha[i] > 0.001) alpha[i] += (0 - alpha[i]) * Math.min(1, dt * 5);
@@ -423,15 +426,14 @@ export class DotEngine {
       alpha[i] += (target - alpha[i]) * Math.min(1, dt * (s === RELEASE ? 3 : 4));
     }
 
-    this.photo?.update(now, dt, this.fade, this.pointerX, this.pointerY, sy);
-
     const pos = this.posAttr.array as Float32Array;
     for (let i = 0; i < this.N; i++) {
       pos[i * 3]     = px[i];
       pos[i * 3 + 1] = py[i];
     }
-    this.posAttr.needsUpdate   = true;
-    this.alphaAttr.needsUpdate = true;
+    this.posAttr.needsUpdate    = true;
+    this.alphaAttr.needsUpdate  = true;
+    this.exciteAttr.needsUpdate = true;
     this.renderer.render(this.scene, this.camera);
     this.raf = requestAnimationFrame(this.frame);
   };
@@ -496,33 +498,6 @@ export class DotEngine {
 
   /* ---------------------------------------------------------- public API */
 
-  attachPhoto(url: string): void {
-    if (!this.ok || this.photo) return;
-    const layer = new PhotoLayer(this.scene);
-    this.photo  = layer;
-    void layer.load(url).then(() => {
-      if (this.photo !== layer) return;
-      const dpr = Math.min(devicePixelRatio || 1, 2);
-      layer.layout(this.w, this.h, dpr, this.slotPageRect(), this.layoutOpts());
-      this.kick();
-    }).catch(() => {
-      if (this.photo === layer) this.photo = null;
-      layer.dispose();
-    });
-  }
-
-  /* the in-flow element the portrait should fill on small screens */
-  setPhotoSlot(el: HTMLElement | null): void {
-    this.slotEl = el;
-    this.relayoutPhoto();
-  }
-
-  /* re-measure the photo placement (layout shifts, slot moves, expansions) */
-  relayoutPhoto(): void {
-    if (!this.photo) return;
-    const dpr = Math.min(devicePixelRatio || 1, 2);
-    this.photo.layout(this.w, this.h, dpr, this.slotPageRect(), this.layoutOpts());
-  }
 
   assemble(root: HTMLElement, { delay = 0, perChar = 12, origin }: {
     delay?:  number;
@@ -621,8 +596,6 @@ export class DotEngine {
     removeEventListener('resize',      this.onResize);
     removeEventListener('pointermove', this.onPointer);
     document.removeEventListener('visibilitychange', this.onVis);
-    this.photo?.dispose();
-    this.photo = null;
     this.geo.dispose();
     this.mat?.dispose();
     this.renderer?.dispose();

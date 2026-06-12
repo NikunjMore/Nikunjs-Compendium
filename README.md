@@ -97,3 +97,47 @@ site. Pushes to `main` auto-deploy via the GitHub integration.
 - A few icon outlines adapted from [Lucide](https://lucide.dev) (ISC)
 
 MIT (c) 2026 Nikunj More
+
+## v10 — the three tabs
+
+A macOS-style dock (bottom centre, pointer magnification, tooltip pills)
+switches between three layers while the dot field keeps running over all
+of them:
+
+- **the compendium** — the original page. The first still-clickable grey
+  box in reading order carries a rotating border beam (two bright
+  segments orbiting its outline); open it and the beam hops to the next
+  one, retiring when everything has been read. The portrait is now a
+  draggable card stack: solid photograph on top, fanned card backs
+  behind, ~1/20 of the screen kept clear at the right edge. Drag and
+  release past the distance/velocity threshold to cycle photos (list
+  them in `app/photos.ts`); a cursor sheen brightens but never distorts.
+- **what I listen to** — my last 20 distinct listens from Last.fm as an
+  edge-to-edge louvered cover flow. The pointer's x position scrolls the
+  row (wheel + touch-drag too); the cover at screen centre eases flat
+  and face-on while its name, artist, my rating and thoughts rise under
+  it. Ratings/thoughts live in `app/music-notes.ts`.
+- **how I recover** — Whoop recovery / sleep / strain with a 7-day
+  recovery × strain strip.
+
+The background dots also gained a cursor flare: dots near the pointer
+ignite (brighter, bigger, hot core) and the glow trails off as it moves.
+Words shimmer under the cursor but never warp.
+
+### The one tiny backend
+
+The site stays a pure static export. Everything dynamic lives in a single
+Supabase Edge Function (`supabase/functions/compendium/`):
+`/music` proxies Last.fm (key server-side, 60 s cache); `/health` serves
+a composed Whoop summary (15 min cache) and silently refreshes the
+rotating OAuth tokens stored in RLS-locked Postgres; `/login` +
+`/callback` perform the one-time Whoop OAuth (see `SETUP-WHOOP.md`).
+The repo copy is sanitized — real credentials live only in the deployed
+function.
+
+### Tests
+
+`npm test` — 37 unit tests over the pure logic in `utils.js`: the dot
+engine's noise/spring/schedule math plus the v10 geometry (cover flow,
+dock magnification, card-stack fan, fling outcomes, cursor flare) and
+the Last.fm/Whoop normalizers.

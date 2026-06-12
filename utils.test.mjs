@@ -198,3 +198,201 @@ test('refillWindow scales with the bite and never breaks the 20 s budget', () =>
   assert.ok(refillWindow(1, 1) + MAX_DELAY + MAX_FLIGHT < 20);
   assert.equal(refillWindow(5, 0), 1.5);
 });
+
+/* ================= v10 additions ================= */
+
+import {
+  lerpExp, coverTransform, scrollFromPointer, centerIndex, dockMagnify,
+  stackLayout, flingOutcome, exciteTarget, pickImage, uniqueTracks,
+  normalizeRecent, fmtDuration, recoveryBand, fmtStrain,
+} from './utils.js';
+
+test('lerpExp converges and is frame-rate independent', () => {
+  let a = 0;
+  for (let i = 0; i < 120; i++) a = lerpExp(a, 100, 1 / 60, 8);
+  assert.ok(Math.abs(a - 100) < 0.01, `60fps settled at ${a}`);
+  let b = 0;
+  for (let i = 0; i < 60; i++) b = lerpExp(b, 100, 1 / 30, 8);
+  /* same wall-clock time at 30fps lands within a hair of the 60fps value */
+  assert.ok(Math.abs(a - b) < 0.5, `30fps diverged: ${b} vs ${a}`);
+  assert.equal(lerpExp(5, 5, 0.016, 8), 5);
+});
+
+test('coverTransform centres, flattens and lifts the focused card', () => {
+  const n = 20;
+  const c = coverTransform(7, 7 * 150, n);
+  assert.equal(c.x, 0, 'centred card sits at screen centre');
+  assert.equal(c.ry, 0, 'centred card faces the viewer');
+  assert.equal(c.focus, 1);
+  assert.ok(c.z > 0 && c.s > 1, 'centred card lifts and grows');
+  const f = coverTransform(9, 7 * 150, n);
+  assert.ok(f.focus === 0, 'two cards away is out of the focus window');
+  assert.ok(Math.abs(f.ry - 56) < 1e-9, 'far cards carry the full tilt');
+  assert.ok(f.x > 2 * 150, 'spread pushes neighbours outward');
+});
+
+test('coverTransform z-order: left over right, centre above all', () => {
+  const n = 20, scroll = 7 * 150;
+  const left = coverTransform(5, scroll, n);
+  const right = coverTransform(9, scroll, n);
+  const mid = coverTransform(7, scroll, n);
+  assert.ok(left.zi > right.zi, 'left card stacks over right card');
+  assert.ok(mid.zi > left.zi && mid.zi > right.zi, 'centre is on top');
+});
+
+test('coverTransform is symmetric in focus around the centre', () => {
+  const n = 20, scroll = 7 * 150;
+  const a = coverTransform(6, scroll, n);
+  const b = coverTransform(8, scroll, n);
+  assert.ok(Math.abs(a.focus - b.focus) < 1e-12);
+  assert.ok(Math.abs(a.x + b.x) < 1e-9, 'mirrored x offsets');
+});
+
+test('scrollFromPointer spans the full row and clamps at the rails', () => {
+  const n = 20, sp = 150, w = 1440;
+  assert.equal(scrollFromPointer(0, w, n, sp), 0);
+  assert.equal(scrollFromPointer(w, w, n, sp), (n - 1) * sp);
+  const mid = scrollFromPointer(w / 2, w, n, sp);
+  assert.ok(mid > 0 && mid < (n - 1) * sp);
+  let prev = -1;
+  for (let x = 0; x <= w; x += 60) {
+    const v = scrollFromPointer(x, w, n, sp);
+    assert.ok(v >= prev, 'monotonic in pointer x');
+    prev = v;
+  }
+});
+
+test('centerIndex rounds to the nearest card and clamps', () => {
+  assert.equal(centerIndex(0, 150, 20), 0);
+  assert.equal(centerIndex(7 * 150 + 60, 150, 20), 7);
+  assert.equal(centerIndex(7 * 150 + 80, 150, 20), 8);
+  assert.equal(centerIndex(1e9, 150, 20), 19);
+  assert.equal(centerIndex(-50, 150, 20), 0);
+});
+
+test('dockMagnify peaks under the pointer and dies at the radius', () => {
+  assert.ok(Math.abs(dockMagnify(0) - 1.55) < 1e-9);
+  assert.equal(dockMagnify(110), 1);
+  assert.equal(dockMagnify(400), 1);
+  let prev = 2;
+  for (let d = 0; d <= 110; d += 5) {
+    const s = dockMagnify(d);
+    assert.ok(s <= prev + 1e-12, 'monotonically shrinking');
+    assert.ok(s >= 1);
+    prev = s;
+  }
+  assert.ok(Math.abs(dockMagnify(-40) - dockMagnify(40)) < 1e-12, 'symmetric');
+});
+
+test('stackLayout: top card rests square, backs fan alternately', () => {
+  assert.deepEqual(stackLayout(0), { rot: 0, dx: 0, dy: 0 });
+  const a = stackLayout(1), b = stackLayout(2), c = stackLayout(3);
+  assert.ok(a.rot < 0 && b.rot > 0 && c.rot < 0, 'alternating fan');
+  assert.ok(Math.abs(c.rot) > Math.abs(a.rot), 'deeper cards fan wider');
+  assert.ok(a.dy < 0 && b.dy < a.dy, 'each deeper card peeks higher');
+  assert.ok(Math.abs(stackLayout(99).rot) < 20, 'depth is capped');
+});
+
+test('flingOutcome: distance or velocity dismisses, otherwise springs home', () => {
+  assert.equal(flingOutcome(10, 5, 0, 0).dismiss, false);
+  assert.equal(flingOutcome(200, 0, 0, 0).dismiss, true);
+  assert.equal(flingOutcome(10, 0, 1500, 0).dismiss, true);
+  const f = flingOutcome(10, 0, 1500, 0);
+  assert.ok(Math.abs(Math.hypot(f.exitX, f.exitY) - 1) < 1e-9, 'unit exit');
+  assert.ok(f.exitX > 0.99, 'fast flick exits along the velocity');
+  const slow = flingOutcome(-200, 0, 0, 0);
+  assert.ok(slow.exitX < -0.99, 'slow drag exits along the displacement');
+});
+
+test('exciteTarget: 1 at the cursor, 0 outside, monotonic falloff', () => {
+  assert.equal(exciteTarget(0), 1);
+  assert.equal(exciteTarget(130 * 130), 0);
+  assert.equal(exciteTarget(1e9), 0);
+  let prev = 1.1;
+  for (let d = 0; d <= 130; d += 10) {
+    const e = exciteTarget(d * d);
+    assert.ok(e <= prev && e >= 0);
+    prev = e;
+  }
+});
+
+const IMGS = [
+  { size: 'small', '#text': 's.jpg' },
+  { size: 'medium', '#text': 'm.jpg' },
+  { size: 'large', '#text': 'l.jpg' },
+  { size: 'extralarge', '#text': 'xl.jpg' },
+];
+
+test('pickImage prefers extralarge and degrades gracefully', () => {
+  assert.equal(pickImage(IMGS), 'xl.jpg');
+  assert.equal(pickImage(IMGS.slice(0, 3)), 'l.jpg');
+  assert.equal(pickImage([{ size: 'small', '#text': 's.jpg' }]), 's.jpg');
+  assert.equal(pickImage([{ size: 'extralarge', '#text': '' }]), '');
+  assert.equal(pickImage(undefined), '');
+});
+
+test('uniqueTracks dedupes by artist+name, keeps order, respects n', () => {
+  const mk = (artist, name) => ({ artist, name });
+  const list = [mk('A', 'x'), mk('A', 'x'), mk('B', 'x'), mk('A', 'X'), mk('C', 'y')];
+  const u = uniqueTracks(list, 20);
+  assert.equal(u.length, 3, 'case-insensitive dedupe');
+  assert.deepEqual(u.map((t) => t.artist), ['A', 'B', 'C']);
+  assert.equal(uniqueTracks(list, 2).length, 2);
+});
+
+test('normalizeRecent parses extended payloads, nowplaying and singletons', () => {
+  const json = {
+    recenttracks: {
+      track: [
+        {
+          artist: { name: 'Tame Impala' }, name: 'One More Hour',
+          album: { '#text': 'The Slow Rush' }, image: IMGS,
+          url: 'https://last.fm/x', '@attr': { nowplaying: 'true' },
+        },
+        {
+          artist: { '#text': 'Berlioz' }, name: 'ode to rahsaan',
+          album: { '#text': 'open this wall' }, image: [],
+          date: { uts: '1718000000' },
+        },
+        {
+          artist: { name: 'Berlioz' }, name: 'ode to rahsaan',
+          album: { '#text': 'open this wall' }, image: [],
+          date: { uts: '1717000000' },
+        },
+        { artist: { name: '' }, name: 'ghost', album: { '#text': '' }, image: [] },
+      ],
+    },
+  };
+  const ts = normalizeRecent(json, 20);
+  assert.equal(ts.length, 2, 'dupes and empty artists drop');
+  assert.equal(ts[0].nowPlaying, true);
+  assert.equal(ts[0].art, 'xl.jpg');
+  assert.equal(ts[1].playedAt, 1718000000000);
+  const single = normalizeRecent({ recenttracks: { track: json.recenttracks.track[0] } }, 5);
+  assert.equal(single.length, 1, 'single-track object payload survives');
+  assert.equal(normalizeRecent({}, 5).length, 0, 'empty payload survives');
+});
+
+test('fmtDuration renders hours and minutes', () => {
+  assert.equal(fmtDuration(0), '0h 0m');
+  assert.equal(fmtDuration(27225000), '7h 34m');
+  assert.equal(fmtDuration(3600000), '1h 0m');
+  assert.equal(fmtDuration(NaN), '0h 0m');
+});
+
+test('recoveryBand matches Whoop zones', () => {
+  assert.equal(recoveryBand(10), 'low');
+  assert.equal(recoveryBand(33), 'low');
+  assert.equal(recoveryBand(34), 'moderate');
+  assert.equal(recoveryBand(66), 'moderate');
+  assert.equal(recoveryBand(67), 'high');
+  assert.equal(recoveryBand(100), 'high');
+  assert.equal(recoveryBand(undefined), 'unknown');
+});
+
+test('fmtStrain clamps to 0-21 with one decimal', () => {
+  assert.equal(fmtStrain(14.27), '14.3');
+  assert.equal(fmtStrain(25), '21.0');
+  assert.equal(fmtStrain(-2), '0.0');
+  assert.equal(fmtStrain(NaN), '0.0');
+});
