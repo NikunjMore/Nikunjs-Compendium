@@ -109,7 +109,8 @@ export default function Compendium() {
     if (!root || flipRef.current.rects.size === 0) return;
     const rects = flipRef.current.rects;
     flipRef.current.rects = new Map();
-    if (matchMedia('(prefers-reduced-motion: reduce)').matches) return;
+    /* hidden tabs get no animation frames; never freeze offsets there */
+    if (document.hidden || matchMedia('(prefers-reduced-motion: reduce)').matches) return;
     const moved: HTMLElement[] = [];
     rects.forEach((old, el) => {
       if (!el.isConnected || moved.length >= 900) return;
