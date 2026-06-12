@@ -66,6 +66,83 @@ export default function Compendium() {
     m.classList.remove('measuring');
   }, []);
 
+  /*
+   * FLIP glide for reflow: before an expansion changes the layout, snapshot
+   * the position of every atomic inline piece (characters, tokens, icons)
+   * plus the headers and footer. After React commits and the rhythm solver
+   * settles, each displaced piece is offset back to where it was (relative
+   * positioning works on inline elements where transforms do not) and then
+   * eased to rest. Text slides to its new home instead of teleporting.
+   */
+  const flipRef = useRef<{ els: HTMLElement[]; rects: Map<HTMLElement, DOMRect> }>({
+    els: [],
+    rects: new Map(),
+  });
+
+  const flipSnapshot = useCallback(() => {
+    const root = rootRef.current;
+    if (!root) return;
+    /* finish any glide still running so measurements are truthful */
+    for (const el of flipRef.current.els) {
+      el.style.transition = 'none';
+      el.style.left = '0px';
+      el.style.top = '0px';
+    }
+    void root.offsetHeight;
+    for (const el of flipRef.current.els) {
+      el.style.removeProperty('position');
+      el.style.removeProperty('left');
+      el.style.removeProperty('top');
+      el.style.removeProperty('transition');
+    }
+    flipRef.current.els = [];
+    const rects = new Map<HTMLElement, DOMRect>();
+    for (const el of Array.from(root.querySelectorAll<HTMLElement>('.hdr, footer, .tok, .ic, span.ch'))) {
+      if (el.matches('span.ch') && el.closest('.tok')) continue; /* token moves as one box */
+      rects.set(el, el.getBoundingClientRect());
+    }
+    flipRef.current.rects = rects;
+  }, []);
+
+  const flipPlay = useCallback(() => {
+    const root = rootRef.current;
+    if (!root || flipRef.current.rects.size === 0) return;
+    const rects = flipRef.current.rects;
+    flipRef.current.rects = new Map();
+    if (matchMedia('(prefers-reduced-motion: reduce)').matches) return;
+    const moved: HTMLElement[] = [];
+    rects.forEach((old, el) => {
+      if (!el.isConnected || moved.length >= 900) return;
+      const now = el.getBoundingClientRect();
+      const dx = old.left - now.left;
+      const dy = old.top - now.top;
+      if (Math.abs(dx) < 1 && Math.abs(dy) < 1) return;
+      el.style.position = 'relative';
+      el.style.transition = 'none';
+      el.style.left = `${dx}px`;
+      el.style.top = `${dy}px`;
+      moved.push(el);
+    });
+    if (!moved.length) return;
+    flipRef.current.els = moved;
+    requestAnimationFrame(() => requestAnimationFrame(() => {
+      for (const el of moved) {
+        el.style.transition = 'left 0.5s cubic-bezier(0.16, 1, 0.3, 1), top 0.5s cubic-bezier(0.16, 1, 0.3, 1)';
+        el.style.left = '0px';
+        el.style.top = '0px';
+      }
+      setTimeout(() => {
+        for (const el of moved) {
+          el.style.removeProperty('position');
+          el.style.removeProperty('left');
+          el.style.removeProperty('top');
+          el.style.removeProperty('transition');
+        }
+        if (flipRef.current.els === moved) flipRef.current.els = [];
+      }, 540);
+    }));
+  }, []);
+
   /* the engine + intro sequence */
   useEffect(() => {
     if (introRan.current || !canvasRef.current || !rootRef.current) return;
@@ -144,6 +221,7 @@ export default function Compendium() {
   const api = useMemo<CompendiumApi>(() => ({
     isOpen: (id) => open.has(id),
     expand: (id) => {
+      flipSnapshot(); /* remember where everything is before the layout moves */
       bump();
       setOpen((prev) => new Set(prev).add(id));
     },
@@ -151,12 +229,16 @@ export default function Compendium() {
       /* drain the field radially around the box that was clicked */
       const r = el.getBoundingClientRect();
       const origin = { x: r.left + r.width / 2, y: r.top + r.height / 2 };
-      /* let the rhythm solver finish easing before sampling glyph targets */
+      /*
+       * One painted frame later the rhythm solver has settled and the new
+       * spans sit at their final positions (the glide only moves the old
+       * text), so glyph targets sampled here are exact.
+       */
       setTimeout(() => {
         void engineRef.current?.assemble(el, { perChar: 13, origin });
-      }, 340);
+      }, 160);
     },
-  }), [open, bump]);
+  }), [open, bump, flipSnapshot]);
 
   /* the dot crowd thins toward silence as every token opens */
   const TOTAL_TOKENS = 17;
@@ -166,9 +248,10 @@ export default function Compendium() {
     engineRef.current?.setCrowd(1 - openness);
   }, [openness]);
 
-  /* refit when content unfolds, and when the window changes shape */
+  /* refit when content unfolds, then glide everything to its new home */
   useLayoutEffect(() => {
     fitRhythm();
+    flipPlay();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open]);
 
