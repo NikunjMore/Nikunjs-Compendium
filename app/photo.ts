@@ -2,7 +2,7 @@
  * photo.ts
  * The portrait: a second population of dots in the same field.
  *
- * The photo on the right is not an <img>. It is ~85,000 dots sampled from
+ * The photo on the right is not an <img>. It is ~200,000 dots sampled from
  * the picture's luminance (unsharp-masked so features keep their edges),
  * drawn by the same renderer with the same disc sprite as the rest of the
  * field, so the page stays one substance throughout: everything you see
@@ -30,7 +30,11 @@ import { clamp, mulberry32 } from '../utils.js';
 /* the text column is capped at 920px; keep a gutter beyond it */
 const COL = 944;
 const MARGIN = 26;
-const GRID_W = 260;          /* sample columns; rows follow the aspect */
+const GRID_W = 400;          /* sample columns; rows follow the aspect.
+                                400 keeps each dot well under the source
+                                photo's 887px of real detail while halving
+                                the visible dot pitch: a finer, sharper
+                                portrait from the same image. */
 const MIN_ZONE = 180;        /* px of free width required to show at all */
 const MIN_VIEW = 1100;       /* below this viewport width, bow out */
 const SHARPEN = 0.6;         /* unsharp-mask strength on the sampled tones */
@@ -79,7 +83,9 @@ const VERT = /* glsl */ `
 
     float sz = uSpacing * (0.52 + 0.70 * aLum) * (1.0 + 0.45 * fall * uHov);
     gl_Position = projectionMatrix * modelViewMatrix * vec4(pos, 0.0, 1.0);
-    gl_PointSize = clamp(sz, 0.8, 4.0) * uDpr;
+    /* the 400-wide grid runs at roughly half the old dot pitch, so the
+       floor drops with it; tone keeps its size range at the finer scale */
+    gl_PointSize = clamp(sz, 0.6, 4.0) * uDpr;
   }
 `;
 

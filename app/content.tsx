@@ -104,7 +104,11 @@ export const EXP: Record<string, ReactNode> = {
   ambitious: (
     <>
       <Was label="ambitious people" ic="spark" />
-      <T text=" (currently: " /><B text="Arya Somu" /><Ic n="people" /><T text=")" />
+      <T text=" (currently: " />
+      <a href="https://aryasomu.com" target="_blank" rel="noopener noreferrer">
+        <B text="Arya Somu" />
+      </a>
+      <Ic n="people" /><T text=")" />
     </>
   ),
   oneproject: (
