@@ -53,14 +53,16 @@ export default function Compendium() {
   const fitRhythm = useCallback(() => {
     const m = rootRef.current;
     if (!m) return;
-    /* measure <main> itself: document.scrollHeight floors at the viewport */
     m.classList.add('measuring');
     m.style.setProperty('--r', '1');
     const h1 = m.offsetHeight;
     m.style.setProperty('--r', '2');
     const h2 = m.offsetHeight;
     const slope = Math.max(40, h2 - h1);
-    const r = Math.max(0.9, Math.min(3.6, 1 + (innerHeight - 8 - h1) / slope));
+    /* allow r down to 0.72 on desktop so fully-expanded page stays on screen */
+    const isMobile = innerWidth <= 700 || (innerHeight <= 620 && innerWidth <= 900);
+    const rMin = isMobile ? 0.9 : 0.72;
+    const r = Math.max(rMin, Math.min(3.6, 1 + (innerHeight - 8 - h1) / slope));
     m.style.setProperty('--r', String(Math.round(r * 100) / 100));
     void m.offsetHeight; /* flush layout before transitions return */
     m.classList.remove('measuring');
@@ -274,14 +276,14 @@ export default function Compendium() {
 
       <main ref={rootRef}>
         <header>
-          <h1 data-block><T text="Nikunj’s Compendium" /></h1>
+          <h1 data-block><T text="Nikunj's Compendium" /></h1>
         </header>
 
         <section aria-label="About">
           <p data-block>
             <T text="I like building things, especially with " />
             <Tok id="ambitious" label="ambitious people" />
-            <T text=". I’m navigating the world " />
+            <T text=". I'm navigating the world " />
             <Tok id="oneproject" label="one project at a time" />
             <T text="." />
           </p>
@@ -299,7 +301,7 @@ export default function Compendium() {
         <section aria-label="Projects">
           <h2 className={`hdr${settled ? ' show' : ''}`}>Projects</h2>
           <p data-block>
-            <T text="After hours, I’m running " />
+            <T text="After hours, I'm running " />
             <Tok id="experiments" label="three experiments" />
             <T text="." />
           </p>
@@ -310,7 +312,7 @@ export default function Compendium() {
           <p data-block>
             <T text="I studied at " />
             <Tok id="deanza" label="De Anza College" />
-            <T text=", and now I’m headed to " />
+            <T text=", and now I'm headed to " />
             <Tok id="berkeley" label="UC Berkeley" />
             <T text="." />
           </p>
@@ -366,10 +368,10 @@ export default function Compendium() {
               target="_blank"
               rel="noopener noreferrer"
             >
-              source ↗
+              source &#x2197;
             </a>
             <span className="sep">·</span>
-            <span>© 2026 Nikunj More</span>
+            <span>&#169; 2026 Nikunj More</span>
           </span>
         </footer>
       </main>
