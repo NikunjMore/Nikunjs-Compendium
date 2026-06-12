@@ -30,13 +30,12 @@ can hit it with zero tooling.
 
 One persistent pool of 2,500 to 16,000 GPU-rendered points (sized to the
 viewport), drawn as soft additive sprites by a tiny shader, plus a separate
-~400k-dot portrait layer. Free dots ride a diagonal ocean swell (waveField:
-orbital wave motion, crest sparkle) layered with curl-noise eddies, four
-drifting vortices, and a cursor whirlpool (radial push + tangential spin).
-The portrait churns calmly in tonal waves (dots of similar brightness trade
-places), hands its cells to the engine so expanding words visibly launch out
-of the photo, and every few seconds spells a word with its own pixels; taken
-cells always refill in under 20 s. Two core behaviors:
+still portrait layer of ~600k fine dots. The two species stay separate: the
+larger background dots ride a diagonal ocean swell (waveField), curl-noise
+eddies, four drifting vortices, and a cursor whirlpool, and they alone build
+every word. The portrait holds still - full-density grid, tone-calibrated
+alpha (fitted against the source photo), glow-only hover - so the image
+stays faithful and undistorted. Two core behaviors:
 
 1. **Flow.** Free dots drift through a curl-noise field: the velocity is the
    curl of a value-noise potential, which makes it divergence-free, so the

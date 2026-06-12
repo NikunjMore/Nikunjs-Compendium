@@ -10,17 +10,10 @@
  *      pointer's own velocity flung into the wake.
  *   4. Per-dot turbulence so neighbours never move in lockstep.
  *
- * Assembly is unchanged at heart (claim nearest free dots, damped springs,
- * left-to-right stagger, DOM chars fade in underneath) with one new trick:
- * when an expansion has an origin and the portrait is on screen, the engine
- * swaps its claimed dots INTO photo cells - the cell hides, the engine dot
- * launches from that exact pixel, and the portrait visibly feeds the words.
- * Cells refill in under 20 s.
- *
- * The borrow only happens when the field is actually short of dots near
- * the click - otherwise the portrait is left alone.  Borrowed cells are
- * repaired by replacement dots that migrate in from off-screen, on a
- * schedule that scales with the bite (entire photo: under 20 s).
+ * Assembly: claim nearest free dots, damped springs, left-to-right
+ * stagger, DOM chars fade in underneath.  Words are built exclusively by
+ * these background dots - the portrait (photo.ts) is a separate, still
+ * layer and is never touched.
  */
 
 import * as THREE from 'three';
@@ -63,7 +56,7 @@ const FRAG = /* glsl */ `
   void main() {
     vec2  c = gl_PointCoord - 0.5;
     float d = length(c);
-    float a = smoothstep(0.5, 0.20, d) * vA;
+    float a = smoothstep(0.5, 0.14, d) * vA;
     if (a < 0.003) discard;
     gl_FragColor = vec4(vec3(1.0), a);
   }
@@ -183,10 +176,10 @@ export class DotEngine {
       this.py[i]    = r() * innerHeight;
       this.vx[i]    = (r() - 0.5) * 10;
       this.vy[i]    = (r() - 0.5) * 10;
-      this.baseA[i] = 0.10 + r() * 0.42;
-      /* same species as the portrait dots: small and crisp, so dots can
-         drift between field and photo without changing identity */
-      this.size[i]  = 0.9 + r() * 0.9;
+      this.baseA[i] = 0.07 + r() * 0.36;
+      /* the background species: larger, softer dots that swirl the page
+         and build every word - distinct from the portrait's fine grain */
+      this.size[i]  = 1.5 + r() * 1.7;
       this.seed[i]  = r();
       pos[i * 3]    = this.px[i];
       pos[i * 3 + 1]= this.py[i];
@@ -564,41 +557,6 @@ export class DotEngine {
     const free   = this.countFree();
     const budget = clamp(Math.floor(free * 0.75), 900, 9000);
     const stride = strideForBudget(est, budget);
-    const estPts = Math.min(budget, Math.round(est / (stride * stride)));
-
-    /*
-     * Photo handoff, only on real scarcity: if the free dots within reach
-     * of the click cannot cover this assembly, borrow the shortfall from
-     * the portrait - its nearest cells go dark as their dots launch into
-     * the words, and replacements migrate back in from off-screen (the
-     * whole repair scales with the bite, never more than 20 s).
-     */
-    let starts: [number, number][] = [];
-    let si = 0;
-    if (origin && this.photo?.visible()) {
-      let nearby = 0;
-      for (let i = 0; i < this.N; i++) {
-        const st0 = this.st[i];
-        if (st0 !== FREE && st0 !== RELEASE) continue;
-        const dx = this.px[i] - origin.x;
-        const dy = this.py[i] - origin.y;
-        if (dx * dx + dy * dy < 78400) nearby++;   /* within 280 px */
-      }
-      const shortfall = estPts - nearby;
-      const pr = this.photo.screenRect();
-      const nearPhoto =
-        origin.x > pr.x - 360 && origin.x < pr.x + pr.w + 360 &&
-        origin.y > pr.y - 360 && origin.y < pr.y + pr.h + 360;
-      if (shortfall > 40 || nearPhoto) {
-        starts = this.photo.takeCellsToward(
-          origin.x, origin.y,
-          clamp(shortfall, 160, 1500),
-        );
-      }
-    }
-    /* borrowed cells stand in for the would-be farthest travellers */
-    const tailFrom = Math.max(0, estPts - starts.length);
-
     const sx0 = scrollX, sy0 = scrollY;
     const rootRect = root.getBoundingClientRect();
     const claim = this.makeClaimer(
@@ -606,7 +564,6 @@ export class DotEngine {
       origin?.y ?? rootRect.top  + rootRect.height / 2,
     );
 
-    let claimed = 0;
     for (const it of items) {
       const font  = this.fontOf(it.el.parentElement ?? it.el);
       const glyph = this.glyphPoints(it.el.textContent!, font, stride);
@@ -623,14 +580,6 @@ export class DotEngine {
         const typ = it.rect.top  + sy0 + gy * scaleY + (rng() - 0.5) * 0.7;
         const pi  = claim();
         if (pi < 0) { rec.need--; continue; }
-        /* once local supply runs out, dots launch from borrowed photo cells */
-        if (claimed >= tailFrom && si < starts.length) {
-          const sp = starts[si++];
-          this.px[pi] = sp[0]; this.py[pi] = sp[1];
-          this.vx[pi] = 0;     this.vy[pi] = 0;
-          this.alpha[pi] = 0.8;
-        }
-        claimed++;
         this.st[pi]     = SEEK;
         this.tx[pi]     = txp;
         this.ty[pi]     = typ;
