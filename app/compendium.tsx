@@ -53,14 +53,14 @@ export default function Compendium() {
   const fitRhythm = useCallback(() => {
     const m = rootRef.current;
     if (!m) return;
-    const doc = document.documentElement;
+    /* measure <main> itself: document.scrollHeight floors at the viewport */
     m.classList.add('measuring');
     m.style.setProperty('--r', '1');
-    const sh1 = doc.scrollHeight;
+    const h1 = m.offsetHeight;
     m.style.setProperty('--r', '2');
-    const sh2 = doc.scrollHeight;
-    const slope = Math.max(40, sh2 - sh1);
-    const r = Math.max(0.9, Math.min(3.4, 1 + (innerHeight - 6 - sh1) / slope));
+    const h2 = m.offsetHeight;
+    const slope = Math.max(40, h2 - h1);
+    const r = Math.max(0.9, Math.min(3.6, 1 + (innerHeight - 8 - h1) / slope));
     m.style.setProperty('--r', String(Math.round(r * 100) / 100));
     void m.offsetHeight; /* flush layout before transitions return */
     m.classList.remove('measuring');
