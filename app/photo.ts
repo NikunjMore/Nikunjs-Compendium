@@ -63,6 +63,9 @@ const VERT = /* glsl */ `
   attribute float aHideT;       /* -1 = visible; else uTime when cell was taken */
   attribute float aRefillT;     /* when the replacement dot launches off-screen */
   attribute vec2  aFrom;        /* its launch point, in portrait-UV units       */
+  attribute float aFromA;       /* brightness at the launch point: the flight
+                                   morphs it into this cell's own tone, landing
+                                   in a perfect colour switch */
 
   varying float vA;
 
@@ -142,6 +145,7 @@ const VERT = /* glsl */ `
      * this cell's own calibrated tone, so the repair blends realistically.
      */
     float hideMul = 1.0;
+    float aHome   = aA;
     if (aHideT >= 0.0) {
       if (uTime < aRefillT) {
         hideMul = 1.0 - smoothstep(0.0, 0.30, uTime - aHideT);
@@ -151,7 +155,10 @@ const VERT = /* glsl */ `
         float p  = clamp((uTime - aRefillT) / fl, 0.0, 1.0);
         float e  = 1.0 - pow(1.0 - p, 3.0);
         pos      = mix(uOrigin + aFrom * uSize, uOrigin + aUV * uSize, e);
-        hideMul  = 0.30 + 0.70 * e;   /* dim streamer in flight, full at home */
+        /* the traveller keeps its origin's brightness and shifts smoothly
+           into this cell's tone - a perfect switch on arrival */
+        aHome    = mix(aFromA, aA, e);
+        hideMul  = 1.0;
         escapeFrac = 0.0;
       }
     }
@@ -169,8 +176,8 @@ const VERT = /* glsl */ `
 
     /* ---- alpha ----------------------------------------------------------- */
     float tw       = 0.97 + 0.03 * sin(aSeed * TAU + uTime * (0.7 + aSeed));
-    float homeAlph = aA * tw * (1.0 + 0.12 * fall * uHov) * uEnergy;
-    float freeAlph = 0.16 * tw;   /* escaped dots blend into the free field */
+    float homeAlph = aHome * tw * (1.0 + 0.12 * fall * uHov) * uEnergy;
+    float freeAlph = 0.13 * tw;   /* escaped dots blend into the free field */
     float a        = mix(homeAlph, freeAlph, escapeFrac);
     vA = a * eb * uFade * uVis * hideMul;
 
@@ -220,6 +227,10 @@ export class PhotoLayer {
   private hideAttr!:   THREE.BufferAttribute;
   private refillAttr!: THREE.BufferAttribute;
   private fromAttr!:   THREE.BufferAttribute;
+  private fromAAttr!:  THREE.BufferAttribute;
+  private alphaLut!:   Float32Array;
+  private lutW = 0;
+  private lutH = 0;
   private hiddenIndices: number[] = [];
   private rng = mulberry32(0x0070bea7);
 
@@ -270,6 +281,26 @@ export class PhotoLayer {
       }
     }
 
+    /*
+     * Residual tone correction, fitted against the source photo band by
+     * band (render/source ratio measured at five tone levels, normalised
+     * to the mid band).  Piecewise-linear in tone.
+     */
+    const CT = [0.00, 0.12, 0.35, 0.55, 0.75, 1.00];
+    const CV = [0.86, 0.86, 1.37, 1.00, 0.98, 0.96];
+    const toneCorr = (t: number): number => {
+      for (let k = 1; k < CT.length; k++) {
+        if (t <= CT[k]) {
+          const f = (t - CT[k - 1]) / (CT[k] - CT[k - 1]);
+          return CV[k - 1] + (CV[k] - CV[k - 1]) * f;
+        }
+      }
+      return CV[CV.length - 1];
+    };
+    /* full-grid alpha lookup so migrating dots can sample the brightness
+       of wherever they appear to launch from */
+    const alphaLut = new Float32Array(gw * gh);
+
     const rng = this.rng;
     const uvArr:   number[] = [];
     const lumArr:  number[] = [];
@@ -299,10 +330,14 @@ export class PhotoLayer {
          * density (keepP) and dot area (rel^2) makes a flat region of tone
          * L render at brightness ~L, and the 0.84 gain keeps the brightest
          * flats just under clipping, so nothing flattens to chalk white.
+         * toneCorr is fitted from measured render-vs-source band ratios,
+         * flattening the residual response so the render tracks the photo.
          */
         const lin = Math.pow(tone, 1.15);
         const rel = 0.66 + 0.50 * tone;
-        aArr.push(clamp((lin / (keepP * rel * rel)) * 0.84, 0.012, 1));
+        const aCal = clamp((lin / (keepP * rel * rel)) * 0.84 * toneCorr(tone), 0.012, 1);
+        aArr.push(aCal);
+        alphaLut[i] = aCal;
         seedArr.push(rng());
         /* churn phase keyed to brightness: similar tones cycle together */
         epArr.push(tone * 16.5 + rng() * 3.5);
@@ -341,6 +376,14 @@ export class PhotoLayer {
     fromAttr.setUsage(THREE.DynamicDrawUsage);
     geo.setAttribute('aFrom', fromAttr);
     this.fromAttr = fromAttr;
+
+    const fromAAttr = new THREE.BufferAttribute(new Float32Array(n), 1);
+    fromAAttr.setUsage(THREE.DynamicDrawUsage);
+    geo.setAttribute('aFromA', fromAAttr);
+    this.fromAAttr = fromAAttr;
+    this.alphaLut = alphaLut;
+    this.lutW = gw;
+    this.lutH = gh;
 
     const mat = new THREE.ShaderMaterial({
       vertexShader:   VERT,
@@ -498,6 +541,15 @@ export class PhotoLayer {
 
   /* ------------------------------------------------------------- handoff */
 
+  /* brightness of the portrait at a uv point (0 where there is no dot) */
+  private lutAlphaAt(u: number, v: number): number {
+    if (!this.alphaLut) return 0.12;
+    const gx = Math.min(this.lutW - 1, Math.max(0, Math.round(u * this.lutW)));
+    const gy = Math.min(this.lutH - 1, Math.max(0, Math.round(v * this.lutH)));
+    const a = this.alphaLut[gy * this.lutW + gx];
+    return a > 0 ? a : 0.12;
+  }
+
   private cellScreen(i: number): [number, number] {
     const r = this.screenRect();
     return [r.x + this.uvXArr[i] * r.w, r.y + this.uvYArr[i] * r.h];
@@ -538,15 +590,16 @@ export class PhotoLayer {
     const nowS = performance.now() / 1000;
     const win  = refillWindow(bite.length * 2, total);
 
-    /* bitten cells heal by sliding in from deeper right inside the photo */
+    /* bitten cells heal by sliding in from deeper right inside the photo;
+       each traveller starts at the brightness of the spot it leaves and
+       morphs into its destination tone mid-flight */
     for (const i of bite) {
       this.hideTArr[i]   = nowS;
       this.refillTArr[i] = nowS + 0.45 + rng() * win * 0.65;
-      this.fromAttr.setXY(
-        i,
-        this.uvXArr[i] + 0.40 + rng() * 0.12,
-        this.uvYArr[i] + (rng() - 0.5) * 0.08,
-      );
+      const fu = this.uvXArr[i] + 0.40 + rng() * 0.12;
+      const fv = this.uvYArr[i] + (rng() - 0.5) * 0.08;
+      this.fromAttr.setXY(i, fu, fv);
+      this.fromAAttr.setX(i, this.lutAlphaAt(fu, fv));
       this.hiddenIndices.push(i);
     }
 
@@ -570,12 +623,15 @@ export class PhotoLayer {
       const sx = W + 60 + rng() * 220;
       const sy = r.y + this.uvYArr[i] * r.h + (rng() - 0.5) * 120;
       this.fromAttr.setXY(i, (sx - r.x) / Math.max(r.w, 1), (sy - r.y) / Math.max(r.h, 1));
+      /* arrivals from the void start as dim field dots */
+      this.fromAAttr.setX(i, 0.10 + rng() * 0.08);
       this.hiddenIndices.push(i);
     }
 
     this.hideAttr.needsUpdate   = true;
     this.refillAttr.needsUpdate = true;
     this.fromAttr.needsUpdate   = true;
+    this.fromAAttr.needsUpdate  = true;
 
     /* the engine launches its word dots from the front of the bite */
     return bite.slice(0, n).map((i) => this.cellScreen(i));
