@@ -1,5 +1,6 @@
 /*
- * photo.ts  v4 - portrait with living churn, cell handoff, and word donation.
+ * photo.ts  v5 - portrait with living churn, cell handoff, and off-screen
+ * migration refill.
  *
  * The portrait is a grid of GPU dots (GRID_W sample columns). Three systems:
  *
@@ -22,13 +23,13 @@
  */
 
 import * as THREE from 'three';
-import { clamp, mulberry32 } from '../utils.js';
+import { clamp, mulberry32, refillWindow } from '../utils.js';
 
 const MARGIN   = 18;
-const GRID_W   = 880;  /* sample columns (source me.jpg is 1600 px wide)     */
+const GRID_W   = 840;  /* sample columns (source me.jpg is 1600 px wide)     */
 const MIN_ZONE = 160;
 const MIN_VIEW = 900;  /* below this, desktop zone mode hides (slot takes over on mobile) */
-const SHARPEN  = 0.85;
+const SHARPEN  = 0.70;
 
 /*
  * Edge-aware density: flat areas keep DENS_FLOOR of their dots (with alpha
@@ -36,16 +37,17 @@ const SHARPEN  = 0.85;
  * lets an 880-column grid stay around ~420k dots instead of a million while
  * the certificate lettering stays dense and readable.
  */
-const DENS_FLOOR = 0.22;  /* darkest flats keep this fraction          */
-const DENS_TONE  = 0.42;  /* bright flats (paper) keep up to floor+this (solid paper) */
-const DENS_GAIN  = 18;    /* edges and lettering keep everything        */
-const COMP_CAP   = 3.2;
-
+const DENS_FLOOR = 0.30;  /* darkest flats keep this fraction           */
+const DENS_TONE  = 0.45;  /* bright flats (paper) keep up to floor+this */
+const DENS_GAIN  = 10;    /* edges and lettering keep everything        */
 /*
- * Hide envelope (shader): fade out in 0.3 s, hidden until 8 s, refade by
- * 15 s - every taken cell is back well inside the 20 s budget.
+ * The narrow density range (0.30-1.0) matters: alpha divides by keepP, so
+ * wild density swings would push flat bright areas into clipping while
+ * edge-dense areas (cheek texture) over-accumulate.  Compressed density
+ * keeps both inside the linear budget and tones land where the photo has
+ * them.
  */
-const HIDE_DONE = 16.0;
+
 
 export type SlotRect = { x: number; y: number; w: number; h: number } | null;
 export type LayoutOpts = { colRight: number; footerTop: number };
@@ -54,11 +56,13 @@ export type LayoutOpts = { colRight: number; footerTop: number };
 
 const VERT = /* glsl */ `
   attribute vec2  aUV;
-  attribute float aLum;
+  attribute float aLum;         /* display tone (drives dot size)               */
+  attribute float aA;           /* calibrated home alpha (tone-true brightness) */
   attribute float aSeed;
-  attribute float aEscapePhase; /* random offset into the 20-s churn cycle */
-  attribute float aHideT;       /* -1 = visible; else uTime when the cell was taken */
-  attribute float aComp;        /* alpha compensation for density-thinned areas */
+  attribute float aEscapePhase; /* offset into the churn cycle                  */
+  attribute float aHideT;       /* -1 = visible; else uTime when cell was taken */
+  attribute float aRefillT;     /* when the replacement dot launches off-screen */
+  attribute vec2  aFrom;        /* its launch point, in portrait-UV units       */
 
   varying float vA;
 
@@ -130,6 +134,28 @@ const VERT = /* glsl */ `
       cos(uTime * 0.9 + aSeed * 27.0)
     ) * 0.18 * mix(1.0, 0.3, escapeFrac);
 
+    /* ---- taken cell: a hole, then a replacement flies in ----------------- */
+    /*
+     * When the engine borrows this cell for words, the cell goes dark (the
+     * borrowed dot left from this exact spot).  At aRefillT a replacement
+     * launches from an off-screen point (aFrom) and eases home; it carries
+     * this cell's own calibrated tone, so the repair blends realistically.
+     */
+    float hideMul = 1.0;
+    if (aHideT >= 0.0) {
+      if (uTime < aRefillT) {
+        hideMul = 1.0 - smoothstep(0.0, 0.30, uTime - aHideT);
+        escapeFrac = 0.0;
+      } else {
+        float fl = 1.6 + aSeed;                       /* flight: 1.6-2.6 s */
+        float p  = clamp((uTime - aRefillT) / fl, 0.0, 1.0);
+        float e  = 1.0 - pow(1.0 - p, 3.0);
+        pos      = mix(uOrigin + aFrom * uSize, uOrigin + aUV * uSize, e);
+        hideMul  = 0.30 + 0.70 * e;   /* dim streamer in flight, full at home */
+        escapeFrac = 0.0;
+      }
+    }
+
     /* ---- cursor soft lens ----------------------------------------------- */
     vec2  d    = pos - uPtr;
     float r    = max(length(d), 0.001);
@@ -141,20 +167,12 @@ const VERT = /* glsl */ `
       tang * 3.0 * sin(uTime * 1.1 + aSeed * 13.0)
     ) * fall * uHov;
 
-    /* ---- taken-cell hide envelope --------------------------------------- */
-    float hid = 0.0;
-    if (aHideT >= 0.0) {
-      float e = uTime - aHideT;
-      hid = smoothstep(0.0, 0.30, e) * (1.0 - smoothstep(8.0, 15.0, e));
-    }
-
     /* ---- alpha ----------------------------------------------------------- */
     float tw       = 0.97 + 0.03 * sin(aSeed * TAU + uTime * (0.7 + aSeed));
-    float homeAlph = (0.10 + 0.86 * aLum) * tw * (1.0 + 0.15 * fall * uHov)
-                   * aComp * uEnergy;
+    float homeAlph = aA * tw * (1.0 + 0.12 * fall * uHov) * uEnergy;
     float freeAlph = 0.16 * tw;   /* escaped dots blend into the free field */
     float a        = mix(homeAlph, freeAlph, escapeFrac);
-    vA = a * eb * uFade * uVis * (1.0 - hid);
+    vA = a * eb * uFade * uVis * hideMul;
 
     float sz = uSpacing * (0.66 + 0.50 * aLum) * (1.0 + 0.35 * fall * uHov);
     gl_Position  = projectionMatrix * modelViewMatrix * vec4(pos, 0.0, 1.0);
@@ -195,10 +213,13 @@ export class PhotoLayer {
   private sy   = 0;
 
   /* CPU-side cell data for handoff lookups */
-  private uvXArr!:  Float32Array;
-  private uvYArr!:  Float32Array;
-  private hideTArr!: Float32Array;
-  private hideAttr!: THREE.BufferAttribute;
+  private uvXArr!:    Float32Array;
+  private uvYArr!:    Float32Array;
+  private hideTArr!:  Float32Array;
+  private refillTArr!: Float32Array;
+  private hideAttr!:   THREE.BufferAttribute;
+  private refillAttr!: THREE.BufferAttribute;
+  private fromAttr!:   THREE.BufferAttribute;
   private hiddenIndices: number[] = [];
   private rng = mulberry32(0x0070bea7);
 
@@ -229,7 +250,7 @@ export class PhotoLayer {
       const o = i * 4;
       const l = (0.2126 * data[o] + 0.7152 * data[o + 1] + 0.0722 * data[o + 2]) / 255;
       const t = clamp((l - 0.03) / 0.90, 0, 1);
-      tones[i] = Math.pow(t * t * (3 - 2 * t), 1.08);
+      tones[i] = t * t * (3 - 2 * t);
     }
     /* unsharp mask for sharper edges at dot scale */
     const blur = new Float32Array(gw * gh);
@@ -252,9 +273,9 @@ export class PhotoLayer {
     const rng = this.rng;
     const uvArr:   number[] = [];
     const lumArr:  number[] = [];
+    const aArr:    number[] = [];  /* calibrated per-dot alpha */
     const seedArr: number[] = [];
     const epArr:   number[] = [];  /* churn phase [0, 20] seconds */
-    const compArr: number[] = [];  /* alpha compensation for thinning */
 
     for (let y = 0; y < gh; y++) {
       for (let x = 0; x < gw; x++) {
@@ -271,17 +292,28 @@ export class PhotoLayer {
           (y + 0.5 + (rng() - 0.5) * 0.28) / gh,
         );
         lumArr.push(tone);
+        /*
+         * Calibrated alpha: the additive canvas sums values in perceptual
+         * (sRGB) space, so the target response is nearly linear in tone -
+         * gamma 1.15 adds a whisper of depth to the mids.  Dividing out dot
+         * density (keepP) and dot area (rel^2) makes a flat region of tone
+         * L render at brightness ~L, and the 0.84 gain keeps the brightest
+         * flats just under clipping, so nothing flattens to chalk white.
+         */
+        const lin = Math.pow(tone, 1.15);
+        const rel = 0.66 + 0.50 * tone;
+        aArr.push(clamp((lin / (keepP * rel * rel)) * 0.84, 0.012, 1));
         seedArr.push(rng());
         /* churn phase keyed to brightness: similar tones cycle together */
         epArr.push(tone * 16.5 + rng() * 3.5);
-        compArr.push(Math.min(1 / keepP, COMP_CAP));
       }
     }
 
     const n = lumArr.length;
-    this.uvXArr   = new Float32Array(n);
-    this.uvYArr   = new Float32Array(n);
-    this.hideTArr = new Float32Array(n).fill(-1);
+    this.uvXArr     = new Float32Array(n);
+    this.uvYArr     = new Float32Array(n);
+    this.hideTArr   = new Float32Array(n).fill(-1);
+    this.refillTArr = new Float32Array(n).fill(-1);
     for (let i = 0; i < n; i++) {
       this.uvXArr[i] = uvArr[i * 2];
       this.uvYArr[i] = uvArr[i * 2 + 1];
@@ -291,14 +323,24 @@ export class PhotoLayer {
     geo.setAttribute('position',     new THREE.BufferAttribute(new Float32Array(n * 3), 3));
     geo.setAttribute('aUV',          new THREE.BufferAttribute(new Float32Array(uvArr), 2));
     geo.setAttribute('aLum',         new THREE.BufferAttribute(new Float32Array(lumArr), 1));
+    geo.setAttribute('aA',           new THREE.BufferAttribute(new Float32Array(aArr), 1));
     geo.setAttribute('aSeed',        new THREE.BufferAttribute(new Float32Array(seedArr), 1));
     geo.setAttribute('aEscapePhase', new THREE.BufferAttribute(new Float32Array(epArr), 1));
-    geo.setAttribute('aComp',        new THREE.BufferAttribute(new Float32Array(compArr), 1));
 
     const hideAttr = new THREE.BufferAttribute(this.hideTArr, 1);
     hideAttr.setUsage(THREE.DynamicDrawUsage);
     geo.setAttribute('aHideT', hideAttr);
     this.hideAttr = hideAttr;
+
+    const refillAttr = new THREE.BufferAttribute(this.refillTArr, 1);
+    refillAttr.setUsage(THREE.DynamicDrawUsage);
+    geo.setAttribute('aRefillT', refillAttr);
+    this.refillAttr = refillAttr;
+
+    const fromAttr = new THREE.BufferAttribute(new Float32Array(n * 2), 2);
+    fromAttr.setUsage(THREE.DynamicDrawUsage);
+    geo.setAttribute('aFrom', fromAttr);
+    this.fromAttr = fromAttr;
 
     const mat = new THREE.ShaderMaterial({
       vertexShader:   VERT,
@@ -440,17 +482,18 @@ export class PhotoLayer {
     u.uVis.value = this.vis;
     (u.uPtr.value as THREE.Vector2).set(px, py);
 
-    /* expire finished hides - only the small hidden set is touched */
+    /* retire repaired cells - only the small hidden set is touched */
     let dirty = false;
     for (let k = this.hiddenIndices.length - 1; k >= 0; k--) {
       const i = this.hiddenIndices[k];
-      if (this.hideTArr[i] >= 0 && nowS - this.hideTArr[i] > HIDE_DONE) {
+      if (this.hideTArr[i] >= 0 && nowS > this.refillTArr[i] + 3.0) {
         this.hideTArr[i] = -1;
+        this.refillTArr[i] = -1;
         this.hiddenIndices.splice(k, 1);
         dirty = true;
       }
     }
-    if (dirty) this.hideAttr.needsUpdate = true;
+    if (dirty) { this.hideAttr.needsUpdate = true; this.refillAttr.needsUpdate = true; }
   }
 
   /* ------------------------------------------------------------- handoff */
@@ -463,12 +506,31 @@ export class PhotoLayer {
   private take(indices: number[]): [number, number][] {
     const nowS = performance.now() / 1000;
     const out: [number, number][] = [];
+    if (!indices.length) return out;
+    /*
+     * Replacement dots stream in from off-screen over a window that scales
+     * with the bite: small takes heal in a couple of seconds, the whole
+     * portrait inside 20 s (window 14 s + launch 0.8 s + flight <=2.6 s).
+     */
+    const win = refillWindow(indices.length, this.uvXArr.length);
+    const r = this.screenRect();
+    const W = innerWidth, H = innerHeight;
     for (const i of indices) {
-      this.hideTArr[i] = nowS;
+      this.hideTArr[i]   = nowS;
+      this.refillTArr[i] = nowS + 0.8 + this.rng() * win;
+      /* launch point: beyond the right/top/bottom screen edges */
+      const side = this.rng();
+      let sx: number, sy: number;
+      if (side < 0.5)       { sx = W + 60 + this.rng() * 160; sy = this.rng() * H; }
+      else if (side < 0.75) { sx = r.x + (this.rng() * 1.4 - 0.2) * r.w; sy = -70 - this.rng() * 120; }
+      else                  { sx = r.x + (this.rng() * 1.4 - 0.2) * r.w; sy = H + 70 + this.rng() * 120; }
+      this.fromAttr.setXY(i, (sx - r.x) / Math.max(r.w, 1), (sy - r.y) / Math.max(r.h, 1));
       this.hiddenIndices.push(i);
       out.push(this.cellScreen(i));
     }
-    if (out.length) this.hideAttr.needsUpdate = true;
+    this.hideAttr.needsUpdate   = true;
+    this.refillAttr.needsUpdate = true;
+    this.fromAttr.needsUpdate   = true;
     return out;
   }
 
@@ -495,30 +557,6 @@ export class PhotoLayer {
     return this.take(cand.slice(0, n).map((c) => c.i));
   }
 
-  /*
-   * Take up to n cells inside a screen-space rect (inflated word box).
-   * Sampled pseudo-randomly so the bite looks organic, not a scanline.
-   */
-  takeCellsInRect(rx: number, ry: number, rw: number, rh: number, n: number): [number, number][] {
-    if (!this.visible() || !this.uvXArr) return [];
-    const r = this.screenRect();
-    const u0 = (rx - r.x) / r.w,      v0 = (ry - r.y) / r.h;
-    const u1 = (rx + rw - r.x) / r.w, v1 = (ry + rh - r.y) / r.h;
-    const total = this.uvXArr.length;
-    const cand: number[] = [];
-    for (let i = 0; i < total; i += 2) {
-      if (this.hideTArr[i] >= 0) continue;
-      const ux = this.uvXArr[i], uy = this.uvYArr[i];
-      if (ux >= u0 && ux <= u1 && uy >= v0 && uy <= v1) cand.push(i);
-    }
-    /* Fisher-Yates partial shuffle for the first n */
-    const m = Math.min(n, cand.length);
-    for (let j = 0; j < m; j++) {
-      const k = j + Math.floor(this.rng() * (cand.length - j));
-      const tmp = cand[j]; cand[j] = cand[k]; cand[k] = tmp;
-    }
-    return this.take(cand.slice(0, m));
-  }
 
   /* --------------------------------------------------------------- dispose */
 

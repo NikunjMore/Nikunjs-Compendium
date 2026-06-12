@@ -15,9 +15,10 @@
  * launches from that exact pixel, and the portrait visibly feeds the words.
  * Cells refill in under 20 s.
  *
- * spellFromPhoto() does the same for ambient words: every so often the
- * portrait's own pixels rearrange into a word in front of the photo, hold,
- * then dissolve back into the free field while the photo heals.
+ * The borrow only happens when the field is actually short of dots near
+ * the click - otherwise the portrait is left alone.  Borrowed cells are
+ * repaired by replacement dots that migrate in from off-screen, on a
+ * schedule that scales with the bite (entire photo: under 20 s).
  */
 
 import * as THREE from 'three';
@@ -38,7 +39,6 @@ type Rec = {
   el: Element; need: number; got: number;
   revealAt: number; done: boolean; fadeAt: number;
 };
-type Amb   = { until: number };
 type Glyph = { pts: [number, number][]; h: number };
 
 /* ---------------------------------------------------------------- shaders */
@@ -92,7 +92,6 @@ export class DotEngine {
   private alphaAttr!: THREE.BufferAttribute;
 
   private recs:   Rec[]    = [];
-  private ambs:   Amb[]    = [];
   private active: number[] = [];
   private photo:  PhotoLayer | null = null;
   private slotEl: HTMLElement | null = null;
@@ -215,7 +214,6 @@ export class DotEngine {
         const r = this.recs[ri];
         if (!r.done) r.revealAt += shift; else r.fadeAt += shift;
       }
-      for (const a of this.ambs) a.until += shift;
       for (let i = 0; i < this.N; i++) {
         if (this.st[i] === SEEK) this.seekT[i] += shift;
       }
@@ -336,43 +334,27 @@ export class DotEngine {
         const dx = txv - px[i], dy = tyv - py[i];
         if (ramp === 1 && dx * dx + dy * dy < 0.5 && Math.abs(vx[i]) + Math.abs(vy[i]) < 26) {
           st[i] = LOCK; px[i] = txv; py[i] = tyv; vx[i] = 0; vy[i] = 0;
-          const ci = this.charOf[i];
-          if (ci >= 0) this.recs[ci].got++;
+          this.recs[this.charOf[i]].got++;
         }
         alpha[i] += (0.9 - alpha[i]) * Math.min(1, dt * 5);
         continue;
       }
 
       if (s === LOCK) {
-        const ci = this.charOf[i];
+        const r = this.recs[this.charOf[i]];
         px[i] = this.tx[i] + Math.sin(this.seed[i] * 43 + t * 2.1) * 0.3;
         py[i] = (this.ty[i] - sy) + Math.cos(this.seed[i] * 57 + t * 1.7) * 0.3;
-
-        if (ci >= 0) {
-          /* a DOM character: linger after reveal, then dissolve */
-          const r = this.recs[ci];
-          if (r.done && now >= r.fadeAt) {
-            if (this.rng() < 0.45) {
-              st[i] = DEAD;
-            } else {
-              st[i] = RELEASE; this.relT[i] = now;
-              const a2 = this.rng() * TAU;
-              const sp = 20 + this.rng() * 40;
-              vx[i] = Math.cos(a2) * sp; vy[i] = Math.sin(a2) * sp - 6;
-            }
-          }
-          alpha[i] += (0.92 - alpha[i]) * Math.min(1, dt * 8);
-        } else {
-          /* an ambient photo-word dot: hold, then rejoin the field (never dies) */
-          const a = this.ambs[-2 - ci];
-          if (!a || now >= a.until) {
+        if (r.done && now >= r.fadeAt) {
+          if (this.rng() < 0.45) {
+            st[i] = DEAD;
+          } else {
             st[i] = RELEASE; this.relT[i] = now;
             const a2 = this.rng() * TAU;
-            const sp = 16 + this.rng() * 34;
-            vx[i] = Math.cos(a2) * sp; vy[i] = Math.sin(a2) * sp - 5;
+            const sp = 20 + this.rng() * 40;
+            vx[i] = Math.cos(a2) * sp; vy[i] = Math.sin(a2) * sp - 6;
           }
-          alpha[i] += (0.95 - alpha[i]) * Math.min(1, dt * 8);
         }
+        alpha[i] += (0.92 - alpha[i]) * Math.min(1, dt * 8);
         continue;
       }
 
@@ -552,19 +534,6 @@ export class DotEngine {
       return Promise.resolve();
     }
 
-    /*
-     * Photo handoff: when an expansion has an origin and the portrait is on
-     * screen, swap up to ~340 of the engine's claimed dots into photo cells
-     * facing the origin.  Each cell hides (refilling in <20 s) while the
-     * engine dot launches from the exact same pixel - the portrait visibly
-     * lends its dots to the words being assembled.
-     */
-    let starts: [number, number][] = [];
-    let si = 0;
-    if (origin && this.photo?.visible()) {
-      starts = this.photo.takeCellsToward(origin.x, origin.y, 340);
-    }
-
     const rng   = this.rng;
     const sched = buildSchedule(spans.length, { perChar, rng });
     const start = performance.now() + delay;
@@ -586,6 +555,34 @@ export class DotEngine {
     const free   = this.countFree();
     const budget = clamp(Math.floor(free * 0.55), 900, 6000);
     const stride = strideForBudget(est, budget);
+    const estPts = Math.min(budget, Math.round(est / (stride * stride)));
+
+    /*
+     * Photo handoff, only on real scarcity: if the free dots within reach
+     * of the click cannot cover this assembly, borrow the shortfall from
+     * the portrait - its nearest cells go dark as their dots launch into
+     * the words, and replacements migrate back in from off-screen (the
+     * whole repair scales with the bite, never more than 20 s).
+     */
+    let starts: [number, number][] = [];
+    let si = 0;
+    if (origin && this.photo?.visible()) {
+      let nearby = 0;
+      for (let i = 0; i < this.N; i++) {
+        const st0 = this.st[i];
+        if (st0 !== FREE && st0 !== RELEASE) continue;
+        const dx = this.px[i] - origin.x;
+        const dy = this.py[i] - origin.y;
+        if (dx * dx + dy * dy < 78400) nearby++;   /* within 280 px */
+      }
+      const shortfall = estPts - nearby;
+      if (shortfall > 40) {
+        starts = this.photo.takeCellsToward(origin.x, origin.y, Math.min(shortfall, 700));
+      }
+    }
+    /* borrowed cells stand in for the would-be farthest travellers */
+    const tailFrom = Math.max(0, estPts - starts.length);
+
     const sx0 = scrollX, sy0 = scrollY;
     const rootRect = root.getBoundingClientRect();
     const claim = this.makeClaimer(
@@ -610,8 +607,8 @@ export class DotEngine {
         const typ = it.rect.top  + sy0 + gy * scaleY + (rng() - 0.5) * 0.7;
         const pi  = claim();
         if (pi < 0) { rec.need--; continue; }
-        /* every other claimed dot launches from a donated photo cell */
-        if (si < starts.length && (claimed & 1) === 0) {
+        /* once local supply runs out, dots launch from borrowed photo cells */
+        if (claimed >= tailFrom && si < starts.length) {
           const sp = starts[si++];
           this.px[pi] = sp[0]; this.py[pi] = sp[1];
           this.vx[pi] = 0;     this.vy[pi] = 0;
@@ -634,94 +631,15 @@ export class DotEngine {
     }, delay + sched.total + 950));
   }
 
-  /*
-   * Ambient photo words: the portrait's own pixels rearrange into `word`
-   * in front of the photo, hold for a beat, then dissolve back into the
-   * free field while the photo heals (every cell refills in <20 s).
-   * Returns false when the portrait is hidden or the field is starving.
-   */
-  spellFromPhoto(word: string): boolean {
-    if (!this.ok || !this.photo?.visible() || document.hidden) return false;
-    const free = this.countFree();
-    if (free < 1200) return false;
-
-    const r = this.photo.screenRect();
-
-    /* size the word to ~76 % of the portrait width */
-    const probe = 100;
-    const fam   = 'Inter, ui-sans-serif, system-ui, sans-serif';
-    this.mx.font = `700 ${probe}px ${fam}`;
-    const mw = Math.max(this.mx.measureText(word).width, 1);
-    const fs = clamp((r.w * 0.76 / mw) * probe, 24, 120);
-    const font = `700 ${fs.toFixed(1)}px ${fam}`;
-
-    const budget = Math.min(1300, Math.floor(free * 0.5));
-    const stride = strideForBudget(fs * fs * 0.18 * word.length, budget);
-    const glyph  = this.glyphPoints(word, font, stride);
-    if (!glyph.pts.length) return false;
-
-    /* the word sits just above the portrait's vertical centre */
-    this.mx.font = font;
-    const wordW = this.mx.measureText(word).width;
-    const x0 = r.x + (r.w - wordW) / 2;
-    const y0 = r.y + r.h * 0.46 - glyph.h / 2;
-
-    /* bite the cells out of an inflated word box (organic, not scanline) */
-    const sources = this.photo.takeCellsInRect(
-      x0 - 50, y0 - 50, wordW + 100, glyph.h + 100,
-      glyph.pts.length,
-    );
-    if (sources.length < glyph.pts.length * 0.4) return false;
-
-    const rng   = this.rng;
-    const start = performance.now() + 60;
-    const ambId = this.ambs.push({ until: start + 3600 + word.length * 90 }) - 1;
-    const ci    = -2 - ambId;
-    const sx0 = scrollX, sy0 = scrollY;
-    const claim = this.makeClaimer(r.x + r.w / 2, r.y + r.h / 2);
-
-    /* if the photo gave fewer cells than targets, thin the targets evenly */
-    const keep = Math.min(glyph.pts.length, sources.length);
-    const step = glyph.pts.length / keep;
-    let acc = 0, j = 0, used = 0;
-    /* glyph extents for left-to-right launch stagger */
-    let minX = Infinity, maxX = -Infinity;
-    for (const [gx] of glyph.pts) { if (gx < minX) minX = gx; if (gx > maxX) maxX = gx; }
-    const span = Math.max(1, maxX - minX);
-
-    for (let pIdx = 0; pIdx < glyph.pts.length; pIdx++) {
-      if (pIdx < acc) continue;
-      acc += step;
-      const [gx, gy] = glyph.pts[pIdx];
-      const pi = claim();
-      if (pi < 0) break;
-      const sp = sources[j++ % sources.length];
-      this.px[pi] = sp[0]; this.py[pi] = sp[1];
-      this.vx[pi] = (rng() - 0.5) * 24;
-      this.vy[pi] = (rng() - 0.5) * 24;
-      this.alpha[pi] = 0.75;
-      this.st[pi]     = SEEK;
-      this.tx[pi]     = x0 + gx + sx0;
-      this.ty[pi]     = y0 + gy + sy0;
-      this.seekT[pi]  = start + ((gx - minX) / span) * 460 + rng() * 70;
-      this.charOf[pi] = ci;
-      used++;
-    }
-    if (!used) return false;
-    this.kick();
-    return true;
-  }
-
   finishAll() {
     const now = performance.now();
     for (const ri of this.active) {
       const r = this.recs[ri];
       if (!r.done) { r.done = true; r.fadeAt = now; r.el.classList.add('on'); }
     }
-    for (const a of this.ambs) a.until = Math.min(a.until, now);
     for (let i = 0; i < this.N; i++) {
       if (this.st[i] === SEEK || this.st[i] === LOCK) {
-        if (this.charOf[i] >= 0 && this.rng() < 0.45) {
+        if (this.rng() < 0.45) {
           this.st[i] = DEAD;
         } else {
           this.st[i] = RELEASE; this.relT[i] = now;

@@ -8,7 +8,7 @@ import assert from 'node:assert/strict';
 import {
   clamp, lerp, dist2, easeOutCubic, mulberry32, hash2, vnoise2, curl2,
   springStep, buildSchedule, strideForBudget, poolCount, bestCandidate,
-  nearestK, formatClicks, waveField,
+  nearestK, formatClicks, waveField, refillWindow,
 } from './utils.js';
 
 test('clamp pins values to the range', () => {
@@ -187,4 +187,14 @@ test('waveField is periodic in time', () => {
   const a = waveField(300, 500, 4, o);
   const b = waveField(300, 500, 4 + T, o);
   assert.ok(Math.abs(a[0] - b[0]) < 1e-6 && Math.abs(a[1] - b[1]) < 1e-6);
+});
+
+test('refillWindow scales with the bite and never breaks the 20 s budget', () => {
+  assert.equal(refillWindow(0, 1000), 1.5);
+  assert.equal(refillWindow(1000, 1000), 14);
+  assert.ok(refillWindow(100, 1000) < refillWindow(500, 1000));
+  /* worst case: window cap + max launch delay + max flight stays under 20 s */
+  const MAX_DELAY = 0.8, MAX_FLIGHT = 2.6;
+  assert.ok(refillWindow(1, 1) + MAX_DELAY + MAX_FLIGHT < 20);
+  assert.equal(refillWindow(5, 0), 1.5);
 });

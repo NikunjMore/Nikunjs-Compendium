@@ -187,3 +187,14 @@ export function waveField(x, y, t, {
   }
   return [u, v, s1];
 }
+
+/*
+ * refillWindow: how long (seconds) the photo spreads its refill arrivals
+ * after donating `taken` of its `total` cells.  Scales with the bite size:
+ * a few hundred cells stream back in a couple of seconds; the entire photo
+ * staggers over 14 s, which (plus flight time) stays inside the 20 s budget.
+ */
+export function refillWindow(taken, total, { base = 1.5, span = 18, cap = 14 } = {}) {
+  const frac = total > 0 ? clamp(taken / total, 0, 1) : 0;
+  return Math.min(cap, base + span * frac);
+}

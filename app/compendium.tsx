@@ -3,7 +3,7 @@
 /*
  * compendium.tsx
  * The whole page: prose, tokens, the WebGL dot field, the click counter,
- * the intro orchestration, and the ambient photo-word scheduler.
+ * and the intro orchestration.
  */
 
 import {
@@ -15,11 +15,6 @@ import { Ic } from './icons';
 import { formatClicks } from '../utils.js';
 
 const CKEY = 'nc.clicks';
-
-/* words the portrait spells with its own pixels, every so often */
-const PHOTO_WORDS = [
-  'HI', 'BUILD', 'THINK', 'CLIMB', 'CREATE', 'INSIGHT', 'BERKELEY', 'COKE ZERO',
-];
 
 export default function Compendium() {
   const rootRef = useRef<HTMLDivElement>(null);
@@ -253,23 +248,6 @@ export default function Compendium() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [fitRhythm]);
 
-  /*
-   * Ambient photo words: once the page settles, the portrait periodically
-   * rearranges a few hundred of its own pixels into a word, holds it, then
-   * lets them drift back while the photo heals (always under 20 s).
-   */
-  useEffect(() => {
-    if (!settled) return;
-    let wi = Math.floor(Math.random() * PHOTO_WORDS.length);
-    const say = () => {
-      if (document.hidden) return;
-      engineRef.current?.spellFromPhoto(PHOTO_WORDS[wi % PHOTO_WORDS.length]);
-      wi++;
-    };
-    const first = setTimeout(say, 6000);
-    const loop  = setInterval(say, 17000);
-    return () => { clearTimeout(first); clearInterval(loop); };
-  }, [settled]);
 
   const api = useMemo<CompendiumApi>(() => ({
     isOpen: (id) => open.has(id),
