@@ -1,12 +1,14 @@
 /*
  * engine.ts  v4 - dot field with ocean swell, vortex swirl, and photo handoff.
  *
- * Free dots ride three layered motions:
+ * Free dots ride four layered motions:
  *   1. A diagonal travelling swell (waveField): bands of motion sweep across
  *      the screen like open water, and dots sparkle on the crests.
  *   2. Curl-noise eddies - divergence-free wander so the field stays fluid.
- *   3. Four slow vortex attractors plus a cursor whirlpool: dots near the
- *      pointer are pushed away AND spun tangentially.
+ *   3. Four slow vortex attractors plus a strong cursor whirlpool: dots
+ *      near the pointer are pushed away AND spun hard around it, with the
+ *      pointer's own velocity flung into the wake.
+ *   4. Per-dot turbulence so neighbours never move in lockstep.
  *
  * Assembly is unchanged at heart (claim nearest free dots, damped springs,
  * left-to-right stagger, DOM chars fade in underneath) with one new trick:
@@ -311,7 +313,7 @@ export class DotEngine {
     this.pointerVX *= Math.exp(-dt * 4);
     this.pointerVY *= Math.exp(-dt * 4);
     const pvx = this.pointerVX, pvy = this.pointerVY;
-    const stir = 170 + Math.min(450, Math.hypot(pvx, pvy) * 24);
+    const stir = 260 + Math.min(700, Math.hypot(pvx, pvy) * 34);
 
     for (let i = 0; i < this.N; i++) {
       const s = st[i];
@@ -360,16 +362,21 @@ export class DotEngine {
 
       /* FREE and RELEASE - the swirling, rolling free field */
 
-      /* 1. Curl-noise eddies (calmer than v3 so the swell reads clearly) */
-      const [u, v] = curl2(px[i] * 0.0011, py[i] * 0.0011, t * 0.075);
-      const eddy   = 14 + this.seed[i] * 12;
+      /* 1. Curl-noise eddies - faster field evolution, wider speed spread */
+      const [u, v] = curl2(px[i] * 0.0011, py[i] * 0.0011, t * 0.11);
+      const eddy   = 20 + this.seed[i] * 22;
       let targetVX = u * eddy;
       let targetVY = v * eddy;
 
-      /* 2. Diagonal ocean swell sweeping across the screen */
-      const [wu, wv, crest] = waveField(px[i], py[i], t);
+      /* 2. Diagonal ocean swell sweeping across the screen (extra chop) */
+      const [wu, wv, crest] = waveField(px[i], py[i], t, { chop: 0.6 });
       targetVX += wu;
       targetVY += wv;
+
+      /* 2b. per-dot turbulence: a private wobble no neighbour shares */
+      const ph = this.seed[i] * 940;
+      targetVX += Math.sin(ph + t * (5.0 + this.seed[i] * 4.0)) * 9;
+      targetVY += Math.cos(ph * 1.7 + t * (4.2 + this.seed[i] * 5.0)) * 9;
 
       /* 3. Vortex tangential contributions */
       for (let vi = 0; vi < this.VN; vi++) {
@@ -381,7 +388,7 @@ export class DotEngine {
           const d          = Math.sqrt(d2);
           const influence  = (1 - d / maxR);
           /* quadratic falloff: very strong near centre, fades at edge */
-          const vortSpeed  = influence * influence * 52 * this.vortSgn[vi];
+          const vortSpeed  = influence * influence * 64 * this.vortSgn[vi];
           /* tangential direction (CCW = (-dy/d, dx/d)) */
           targetVX += (-dvy / d) * vortSpeed;
           targetVY += ( dvx / d) * vortSpeed;
@@ -389,7 +396,7 @@ export class DotEngine {
       }
 
       /* 4. Blend current velocity toward target */
-      const blend = 1 - Math.exp(-dt * (s === RELEASE ? 2.6 : 1.6));
+      const blend = 1 - Math.exp(-dt * (s === RELEASE ? 2.8 : 2.0));
       vx[i] += (targetVX - vx[i]) * blend;
       vy[i] += (targetVY - vy[i]) * blend;
 
@@ -397,13 +404,13 @@ export class DotEngine {
       const mdx = px[i] - this.pointerX;
       const mdy = py[i] - this.pointerY;
       const md2 = mdx * mdx + mdy * mdy;
-      if (md2 < 28900 && md2 > 0.01) {         /* 170 px radius */
+      if (md2 < 44100 && md2 > 0.01) {         /* 210 px radius */
         const md        = Math.sqrt(md2);
-        const radialF   = (1 - md / 170) * stir * dt;
-        /* tangential force (CCW whirlpool around cursor) */
-        const tangentF  = radialF * 1.0;
-        vx[i] += (mdx / md) * radialF + (-mdy / md) * tangentF + pvx * 0.6 * dt;
-        vy[i] += (mdy / md) * radialF + ( mdx / md) * tangentF + pvy * 0.6 * dt;
+        const radialF   = (1 - md / 210) * stir * dt;
+        /* tangential force (CCW whirlpool around cursor, swirls hard) */
+        const tangentF  = radialF * 1.35;
+        vx[i] += (mdx / md) * radialF + (-mdy / md) * tangentF + pvx * 1.1 * dt;
+        vy[i] += (mdy / md) * radialF + ( mdx / md) * tangentF + pvy * 1.1 * dt;
       }
 
       px[i] += vx[i] * dt;
