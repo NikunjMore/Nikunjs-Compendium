@@ -320,19 +320,31 @@ export function dockMagnify(dist, { radius = 110, boost = 0.55 } = {}) {
 /* ---------------- photo card stack ---------------- */
 
 /*
- * stackLayout: the resting fan for the k-th card from the top (k=0 is the
- * photo you see; video ref #4). Alternating small rotations, slight
- * upward peek so each deeper card shows a corner.
+ * stackPose: the deck fan from the reference video (#4), measured frame
+ * by frame: every deeper card rotates further CLOCKWISE and peeks out
+ * toward the top-right - one cascading direction, never alternating.
+ * Depth is continuous on purpose: while the front card is being dragged,
+ * every card below renders at (k - promote), so the whole deck glides
+ * one slot forward in step with the drag (the reference's signature).
+ *
+ * Returns { rot (deg), fx, fy }: offsets as fractions of the card width.
  */
-export function stackLayout(k, nBacks = 3) {
-  if (k <= 0) return { rot: 0, dx: 0, dy: 0 };
-  const kk = Math.min(k, nBacks + 1);
-  const sign = kk % 2 === 1 ? -1 : 1;
+export function stackPose(d) {
+  const dd = Math.max(0, d);
   return {
-    rot: sign * (2.5 + kk * 2.6),
-    dx: sign * kk * 5,
-    dy: -kk * 6,
+    rot: 6.2 * dd,
+    fx: 0.030 * dd,
+    fy: -0.024 * dd,
   };
+}
+
+/*
+ * dragPromote: how far the deck has slid toward its next pose while the
+ * front card is `dist` px into a drag. Fully promoted by 150 px, like
+ * the reference (the next card is already straight before release).
+ */
+export function dragPromote(dist, full = 150) {
+  return clamp(dist / full, 0, 1);
 }
 
 /*

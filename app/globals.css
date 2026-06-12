@@ -485,6 +485,8 @@ main.off {
 .pcard.front { cursor: grab; touch-action: none; }
 .pcard.front:active { cursor: grabbing; }
 .pcard.front.drag { transition: none; }
+.pcard.live { transition: none; } /* deck promotion tracks the hand */
+.pcard.tuck { transition: transform 0.45s cubic-bezier(0.22, 1.1, 0.36, 1); } /* the slide-under */
 
 .pcard img {
   width: 100%;

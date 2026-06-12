@@ -1,6 +1,6 @@
 {
   "name": "nikunjs-compendium",
-  "version": "10.2.0",
+  "version": "10.3.0",
   "private": true,
   "description": "Nikunj's Compendium: a one-page personal site where a WebGL field of dots assembles the words.",
   "type": "module",

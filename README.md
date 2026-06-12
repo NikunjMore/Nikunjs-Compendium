@@ -107,11 +107,14 @@ of them:
 - **the compendium** — the original page. The first still-clickable grey
   box in reading order carries a rotating border beam (two bright
   segments orbiting its outline); open it and the beam hops to the next
-  one, retiring when everything has been read. The portrait is now a
-  draggable card stack: solid photograph on top, fanned card backs
-  behind, ~1/20 of the screen kept clear at the right edge. Drag and
-  release past the distance/velocity threshold to cycle photos (list
-  them in `app/photos.ts`); a cursor sheen brightens but never distorts.
+  one, retiring when everything has been read. The portrait is a
+  draggable card deck animated 1:1 with the reference recording: the
+  fan cascades clockwise toward the top-right, the deck glides one slot
+  forward in step with your drag (the next photo is straight before you
+  let go), and a released card slides visibly back UNDER the new front
+  card into the rear slot. Only real photos are dealt - no placeholder
+  frames (list photos in `app/photos.ts`). ~1/20 of the screen stays
+  clear at the right edge; a cursor sheen brightens but never distorts.
 - **what I listen to** — my last 25 distinct listens from Last.fm as an
   edge-to-edge louvered cover flow that loops endlessly (past the 25th
   cover the 1st comes around again, both directions), repainted live

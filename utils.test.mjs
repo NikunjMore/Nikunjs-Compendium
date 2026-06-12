@@ -203,7 +203,7 @@ test('refillWindow scales with the bite and never breaks the 20 s budget', () =>
 
 import {
   lerpExp, coverTransform, wrapDelta, normalizeWheel, timeAgo, centerIndex, nearestCover, dockMagnify,
-  stackLayout, flingOutcome, exciteTarget, pickImage, uniqueTracks,
+  stackPose, dragPromote, flingOutcome, exciteTarget, pickImage, uniqueTracks,
   normalizeRecent, fmtDuration, recoveryBand, fmtStrain,
 } from './utils.js';
 
@@ -331,13 +331,22 @@ test('dockMagnify peaks under the pointer and dies at the radius', () => {
   assert.ok(Math.abs(dockMagnify(-40) - dockMagnify(40)) < 1e-12, 'symmetric');
 });
 
-test('stackLayout: top card rests square, backs fan alternately', () => {
-  assert.deepEqual(stackLayout(0), { rot: 0, dx: 0, dy: 0 });
-  const a = stackLayout(1), b = stackLayout(2), c = stackLayout(3);
-  assert.ok(a.rot < 0 && b.rot > 0 && c.rot < 0, 'alternating fan');
-  assert.ok(Math.abs(c.rot) > Math.abs(a.rot), 'deeper cards fan wider');
-  assert.ok(a.dy < 0 && b.dy < a.dy, 'each deeper card peeks higher');
-  assert.ok(Math.abs(stackLayout(99).rot) < 20, 'depth is capped');
+test('stackPose: front rests square, deeper cards cascade clockwise up-right', () => {
+  assert.deepEqual(stackPose(0), { rot: 0, fx: 0, fy: -0 });
+  const a = stackPose(1), b = stackPose(2), c = stackPose(3);
+  assert.ok(a.rot > 0 && b.rot > a.rot && c.rot > b.rot, 'one direction, deeper = wider');
+  assert.ok(a.fx > 0 && b.fx > a.fx, 'peeks march right');
+  assert.ok(a.fy < 0 && b.fy < a.fy, 'and upward');
+  const half = stackPose(0.5);
+  assert.ok(Math.abs(half.rot - a.rot / 2) < 1e-9, 'continuous depth interpolates linearly');
+  assert.equal(stackPose(-3).rot, 0, 'negative depth clamps to the front pose');
+});
+
+test('dragPromote eases the deck forward with the drag and clamps', () => {
+  assert.equal(dragPromote(0), 0);
+  assert.equal(dragPromote(75), 0.5);
+  assert.equal(dragPromote(150), 1);
+  assert.equal(dragPromote(900), 1);
 });
 
 test('flingOutcome: distance or velocity dismisses, otherwise springs home', () => {
