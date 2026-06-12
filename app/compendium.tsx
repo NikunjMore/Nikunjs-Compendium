@@ -7,7 +7,7 @@
  */
 
 import {
-  useCallback, useEffect, useMemo, useRef, useState,
+  useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState,
 } from 'react';
 import { getEngine, type DotEngine } from './engine';
 import { Ctx, T, Tok, type CompendiumApi } from './content';
@@ -41,6 +41,29 @@ export default function Compendium() {
       return n;
     });
     setPing((p) => p + 1);
+  }, []);
+
+  /*
+   * Rhythm solver: spacing scales linearly with the --r variable, so two
+   * instant probes (r=1, r=2) give the pixels-per-r slope. Solve for the r
+   * that makes the page fill the viewport exactly, in any expansion state,
+   * on any screen. Probes run with transitions suppressed inside a single
+   * frame, so nothing flickers; the real change then eases in.
+   */
+  const fitRhythm = useCallback(() => {
+    const m = rootRef.current;
+    if (!m) return;
+    const doc = document.documentElement;
+    m.classList.add('measuring');
+    m.style.setProperty('--r', '1');
+    const sh1 = doc.scrollHeight;
+    m.style.setProperty('--r', '2');
+    const sh2 = doc.scrollHeight;
+    const slope = Math.max(40, sh2 - sh1);
+    const r = Math.max(0.9, Math.min(3.4, 1 + (innerHeight - 6 - sh1) / slope));
+    m.style.setProperty('--r', String(Math.round(r * 100) / 100));
+    void m.offsetHeight; /* flush layout before transitions return */
+    m.classList.remove('measuring');
   }, []);
 
   /* the engine + intro sequence */
@@ -84,6 +107,7 @@ export default function Compendium() {
 
       const reduced = matchMedia('(prefers-reduced-motion: reduce)').matches;
       document.documentElement.classList.add(reduced ? 'reduced' : 'anim');
+      fitRhythm(); /* settle the final layout before sampling glyph targets */
       const engine = getEngine(canvasRef.current, reduced);
       engineRef.current = engine;
 
@@ -114,7 +138,8 @@ export default function Compendium() {
 
     void run();
     return () => { cancelled = true; net.disconnect(); };
-  }, []);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [fitRhythm]);
 
   const api = useMemo<CompendiumApi>(() => ({
     isOpen: (id) => open.has(id),
@@ -125,37 +150,45 @@ export default function Compendium() {
     assembleNode: (el) => {
       /* drain the field radially around the box that was clicked */
       const r = el.getBoundingClientRect();
-      void engineRef.current?.assemble(el, {
-        perChar: 13,
-        origin: { x: r.left + r.width / 2, y: r.top + r.height / 2 },
-      });
+      const origin = { x: r.left + r.width / 2, y: r.top + r.height / 2 };
+      /* let the rhythm solver finish easing before sampling glyph targets */
+      setTimeout(() => {
+        void engineRef.current?.assemble(el, { perChar: 13, origin });
+      }, 340);
     },
   }), [open, bump]);
 
-  /*
-   * The field and the layout both respond to how unfolded the page is:
-   * the dot crowd thins toward silence as every token opens, and the
-   * vertical rhythm compresses from roomy (collapsed fills the screen)
-   * to tight (fully expanded still fits the screen).
-   */
+  /* the dot crowd thins toward silence as every token opens */
   const TOTAL_TOKENS = 17;
   const openness = Math.min(1, open.size / TOTAL_TOKENS);
-  const rhythm = 2.2 - openness * 1.25;
 
   useEffect(() => {
     engineRef.current?.setCrowd(1 - openness);
   }, [openness]);
 
+  /* refit when content unfolds, and when the window changes shape */
+  useLayoutEffect(() => {
+    fitRhythm();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open]);
+
+  useEffect(() => {
+    let t = 0;
+    const onResize = () => {
+      clearTimeout(t);
+      t = window.setTimeout(fitRhythm, 150);
+    };
+    addEventListener('resize', onResize);
+    return () => { clearTimeout(t); removeEventListener('resize', onResize); };
+  }, [fitRhythm]);
+
   return (
     <Ctx.Provider value={api}>
       <canvas id="dots" ref={canvasRef} aria-hidden="true" />
 
-      <main ref={rootRef} style={{ ['--r' as string]: String(rhythm) } as React.CSSProperties}>
+      <main ref={rootRef}>
         <header>
           <h1 data-block><T text="Nikunj’s Compendium" /></h1>
-          <div data-block>
-            <p className="byline"><T text="by Nikunj More · Bay Area" /></p>
-          </div>
         </header>
 
         <section aria-label="About">
