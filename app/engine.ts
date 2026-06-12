@@ -18,9 +18,13 @@
  *
  * Targets live in page coordinates and are re-projected against scrollY
  * every frame, so assemblies stay glued to their text while scrolling.
+ *
+ * A third population lives in photo.ts: the portrait on the right, drawn
+ * with the same dot sprite but exempt from claiming, crowd, and death.
  */
 
 import * as THREE from 'three';
+import { PhotoLayer } from './photo';
 import {
   clamp, mulberry32, curl2, buildSchedule, strideForBudget,
   poolCount,
@@ -94,6 +98,7 @@ export class DotEngine {
 
   private recs: Rec[] = [];
   private active: number[] = [];
+  private photo: PhotoLayer | null = null;
 
   private rng = mulberry32(0x00c0ffee);
   private glyphs = new Map<string, Glyph>();
@@ -242,6 +247,7 @@ export class DotEngine {
     this.camera.top = 0;
     this.camera.bottom = this.h;
     this.camera.updateProjectionMatrix();
+    this.photo?.layout(this.w, this.h, dpr);
     /* mid-assembly resizes reflow text: settle instantly, stay honest */
     if (this.active.length) this.finishAll();
   }
@@ -368,6 +374,9 @@ export class DotEngine {
       alpha[i] += (target - alpha[i]) * Math.min(1, dt * (s === RELEASE ? 3 : 4));
     }
 
+    /* the portrait keeps its own time; it spends nothing, it owes nothing */
+    this.photo?.update(now, dt, this.fade, this.pointerX, this.pointerY);
+
     /* push to GPU */
     const pos = this.posAttr.array as Float32Array;
     for (let i = 0; i < this.N; i++) {
@@ -454,6 +463,27 @@ export class DotEngine {
   }
 
   /* ---------------- public API ---------------- */
+
+  /*
+   * Hang the portrait on the right side of the field. Its dots join the
+   * same render pass but belong to no pool: the claimer cannot reach them,
+   * the crowd dial cannot dim them, finishAll cannot spend them. However
+   * far the compendium unfolds, the photo stays whole.
+   */
+  attachPhoto(url: string): void {
+    if (!this.ok || this.photo) return;
+    const layer = new PhotoLayer(this.scene);
+    this.photo = layer;
+    void layer.load(url).then(() => {
+      if (this.photo !== layer) return; /* destroyed while loading */
+      const dpr = Math.min(devicePixelRatio || 1, 2);
+      layer.layout(this.w, this.h, dpr);
+      this.kick();
+    }).catch(() => {
+      if (this.photo === layer) this.photo = null;
+      layer.dispose();
+    });
+  }
 
   /*
    * Animate every un-revealed character under `root`. Resolves when the
@@ -573,6 +603,8 @@ export class DotEngine {
     removeEventListener('resize', this.onResize);
     removeEventListener('pointermove', this.onPointer);
     document.removeEventListener('visibilitychange', this.onVis);
+    this.photo?.dispose();
+    this.photo = null;
     this.geo.dispose();
     this.mat?.dispose();
     this.renderer?.dispose();

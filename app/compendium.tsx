@@ -188,6 +188,8 @@ export default function Compendium() {
       fitRhythm(); /* settle the final layout before sampling glyph targets */
       const engine = getEngine(canvasRef.current, reduced);
       engineRef.current = engine;
+      /* the portrait: same dots, own population, immune to the crowd dial */
+      engine.attachPhoto('/me.jpg');
 
       const root = rootRef.current;
       const blocks = Array.from(root.querySelectorAll<HTMLElement>('[data-block]'));
