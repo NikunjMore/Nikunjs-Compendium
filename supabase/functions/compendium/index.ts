@@ -212,8 +212,8 @@ async function lastfm(params: Record<string, string>) {
   return r.json();
 }
 
-/* The 20 most recent distinct artist+name pairs from a recenttracks payload. */
-function uniqueKeys(recent: any, n = 20): { key: string; artist: string; name: string }[] {
+/* The 25 most recent distinct artist+name pairs from a recenttracks payload. */
+function uniqueKeys(recent: any, n = 25): { key: string; artist: string; name: string }[] {
   let list = recent?.recenttracks?.track ?? [];
   if (!Array.isArray(list)) list = [list];
   const seen = new Set<string>();
@@ -247,13 +247,13 @@ async function music(): Promise<Response> {
   let recent: any;
   try {
     recent = await lastfm({
-      method: 'user.getrecenttracks', user: LASTFM_USER, limit: '50', extended: '1',
+      method: 'user.getrecenttracks', user: LASTFM_USER, limit: '60', extended: '1',
     });
   } catch {
     if (cache?.payload) return json(cache.payload); /* stale beats nothing */
     return json({ error: 'lastfm_unreachable' }, 502);
   }
-  const wanted = uniqueKeys(recent);
+  const wanted = uniqueKeys(recent, 25);
   const store = (await kvGet('counts'))?.payload ?? {};
   const now = Date.now();
   const missing = wanted.filter((w) => !store[w.key] || now - store[w.key].at > COUNTS_TTL);

@@ -112,14 +112,17 @@ of them:
   behind, ~1/20 of the screen kept clear at the right edge. Drag and
   release past the distance/velocity threshold to cycle photos (list
   them in `app/photos.ts`); a cursor sheen brightens but never distorts.
-- **what I listen to** — my last 20 distinct listens from Last.fm as an
-  edge-to-edge louvered cover flow, repainted live (the feed re-polls
-  every minute while the tab is open and follows the centred track by
-  key across updates). The scroll wheel / trackpad moves the row (touch
-  drag too), clicking any off-centre cover glides it to the centre, and
-  the centred cover eases flat and face-on while its name, artist, play
-  count, when I last heard it, and my rating and thoughts rise under it.
-  Covers are fully opaque and composite in painter's order (no card ever
+- **what I listen to** — my last 25 distinct listens from Last.fm as an
+  edge-to-edge louvered cover flow that loops endlessly (past the 25th
+  cover the 1st comes around again, both directions), repainted live
+  (the feed re-polls every minute while the tab is open and follows the
+  centred track by key across updates). The scroll wheel / trackpad
+  moves the row (touch drag too) and a beat after input stops it snaps
+  to the nearest cover, so something always sits flat, face-on, front
+  and centre showing its name, artist, play count, when I last heard
+  it, and my rating and thoughts. Clicking anywhere glides the nearest
+  cover to the centre. Covers are fully opaque and stack in a z pyramid
+  (centre on top, both sides cascading symmetrically — no card ever
   slices into its neighbour); the dot field lives behind the layer and
   keeps simulating while hidden. Ratings/thoughts live in
   `app/music-notes.ts`. The dock is liquid glass; its three icons are

@@ -2,32 +2,40 @@
 
 /*
  * musictab.tsx
- * The music tab (video ref #6): my last 20 distinct listens from Last.fm
+ * The music tab (video ref #6): my last 25 distinct listens from Last.fm
  * as an edge-to-edge louvered row of album covers, repainted live as I
  * listen (the feed re-polls every minute while the tab is open and the
  * centred track is followed across updates by key, not index).
  *
- * Interaction, by design calm:
- *   - the scroll wheel / trackpad (and touch-drag) moves the row
- *   - clicking any off-centre cover glides it to the centre
- *   - the centred cover eases flat, face-on, and shows name / artist /
- *     play count / when I last heard it / my rating and thoughts
+ * The row is an endless loop: past the 25th cover the 1st comes around
+ * again, in both directions (wrapDelta does the shortest-way maths).
  *
- * Covers are fully opaque and composited in painter's order (left over
- * right, centre on top) so cards can never slice into one another; the
- * dot field lives BEHIND this layer and keeps simulating while hidden.
+ * Interaction, by design calm:
+ *   - the scroll wheel / trackpad (and touch-drag) moves the row, and a
+ *     moment after input stops it snaps to the nearest cover, so there
+ *     is always a card sitting flat, face-on, front and centre
+ *   - clicking anywhere glides the nearest cover to the centre
+ *   - the centred cover shows name / artist / play count / when I last
+ *     heard it / my rating and thoughts
+ *
+ * Covers are fully opaque and composited in painter's order (a z pyramid:
+ * centre on top, both sides cascading down symmetrically) so cards can
+ * never slice into one another; the dot field lives BEHIND this layer
+ * and keeps simulating while hidden.
  */
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { getRecentTracks, artLarge, trackKey, type Track } from './lastfm';
 import { noteFor } from './music-notes';
 import {
-  clamp, coverTransform, normalizeWheel, centerIndex, nearestCover, lerpExp, timeAgo,
+  clamp, coverTransform, wrapDelta, normalizeWheel, centerIndex, nearestCover,
+  lerpExp, timeAgo,
 } from '../utils.js';
 
-const N = 20;
+const N = 25;
 const SKELETON = 9;
 const POLL_MS = 60_000;
+const SNAP_AFTER_MS = 260; /* idle this long -> settle on the nearest card */
 
 export function MusicTab({ active }: { active: boolean }) {
   const [tracks, setTracks] = useState<Track[] | null>(null);
@@ -45,6 +53,7 @@ export function MusicTab({ active }: { active: boolean }) {
   const touch = useRef<{ id: number; x: number; vx: number; t: number; moved: number } | null>(null);
   const suppressClick = useRef(false);
   const tracksRef = useRef<Track[] | null>(null);
+  const inputAt = useRef(0); /* last wheel/drag timestamp, for the snap */
 
   /* ---- data: fetch now, then keep fetching while the tab is open ---- */
   const load = useCallback(async () => {
@@ -59,10 +68,8 @@ export function MusicTab({ active }: { active: boolean }) {
           const key = trackKey(old[oi].artist, old[oi].name);
           const ni = fresh.findIndex((t) => trackKey(t.artist, t.name) === key);
           if (ni >= 0) {
-            scrollTgt.current = ni * sp;
+            scrollTgt.current += wrapDelta(ni * sp - scrollTgt.current, fresh.length * sp);
             scrollCur.current = scrollTgt.current;
-          } else {
-            scrollTgt.current = clamp(scrollTgt.current, 0, (fresh.length - 1) * sp);
           }
         }
         return fresh;
@@ -100,6 +107,7 @@ export function MusicTab({ active }: { active: boolean }) {
     lift: cardW * 0.42,
     spread: cardW * 0.34,
     window: 1.45,
+    loop: true,
   }), [spacing, cardW]);
 
   const items: (Track | null)[] = tracks ?? Array.from({ length: SKELETON }, () => null);
@@ -111,8 +119,11 @@ export function MusicTab({ active }: { active: boolean }) {
     const step = (now: number) => {
       const dt = Math.min(0.05, (now - (lastT.current || now)) / 1000);
       lastT.current = now;
-      const max = (n - 1) * spacing;
-      scrollTgt.current = clamp(scrollTgt.current, 0, max);
+      /* settle: a beat after the last input, glide to the nearest card so
+         something always sits flat, front and centre */
+      if (!touch.current && now - inputAt.current > SNAP_AFTER_MS) {
+        scrollTgt.current = Math.round(scrollTgt.current / spacing) * spacing;
+      }
       scrollCur.current = lerpExp(scrollCur.current, scrollTgt.current, dt, 7);
       for (let i = 0; i < n; i++) {
         const el = cardRefs.current[i];
@@ -124,7 +135,7 @@ export function MusicTab({ active }: { active: boolean }) {
         el.style.zIndex = String(c.zi);
       }
       setCenter((p) => {
-        const ci = centerIndex(scrollCur.current, spacing, n);
+        const ci = centerIndex(scrollCur.current, spacing, n, true);
         return p === ci ? p : ci;
       });
       raf.current = requestAnimationFrame(step);
@@ -137,6 +148,7 @@ export function MusicTab({ active }: { active: boolean }) {
   /* wheel / trackpad drives the row */
   const onWheel = (e: React.WheelEvent) => {
     scrollTgt.current += normalizeWheel(e.deltaY, e.deltaX, e.deltaMode);
+    inputAt.current = performance.now();
   };
 
   /* touch drag (with a flick of momentum) */
@@ -152,11 +164,13 @@ export function MusicTab({ active }: { active: boolean }) {
     t.vx = dx / Math.max(0.001, (now - t.t) / 1000);
     t.x = e.clientX; t.t = now; t.moved += Math.abs(dx);
     scrollTgt.current -= dx * 1.7;
+    inputAt.current = now;
   };
   const onPointerUp = (e: React.PointerEvent) => {
     const t = touch.current;
     if (!t || e.pointerId !== t.id) return;
     scrollTgt.current -= t.vx * 0.18;
+    inputAt.current = performance.now() - SNAP_AFTER_MS + 320; /* let the flick breathe, then snap */
     suppressClick.current = t.moved > 10;
     touch.current = null;
     setTimeout(() => { suppressClick.current = false; }, 80);
@@ -166,7 +180,9 @@ export function MusicTab({ active }: { active: boolean }) {
      one: the whole layer is a forgiving hit target (the calm way) */
   const centerOn = (i: number) => {
     if (suppressClick.current) return;
-    scrollTgt.current = i * spacing;
+    /* shortest way around the loop */
+    scrollTgt.current += wrapDelta(i * spacing - scrollTgt.current, n * spacing);
+    inputAt.current = 0; /* a click is a destination: no snap fight */
   };
   const onLayerClick = (e: React.MouseEvent) => {
     if (suppressClick.current || !tracks?.length) return;

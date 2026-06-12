@@ -8,7 +8,8 @@
  */
 export const PHOTOS: string[] = [
   '/me.jpg',
-  /* '/photos/your-next-photo.jpg', */
+  '/photos/bali-gate.jpg',
+  '/photos/dinner-laugh.jpg',
 ];
 
 /* height / width of the card frame (matches the original portrait) */

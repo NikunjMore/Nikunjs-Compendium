@@ -209,6 +209,12 @@ export function lerpExp(current, target, dt, rate = 8) {
 
 /* ---------------- cover flow (music tab) ---------------- */
 
+/* Wrap v into [-period/2, period/2): the shortest signed way around a loop. */
+export function wrapDelta(v, period) {
+  if (!(period > 0)) return v;
+  return ((((v + period / 2) % period) + period) % period) - period / 2;
+}
+
 /*
  * coverTransform: where the i-th album card sits for a given scroll offset.
  * The row reads like a louvered shutter (video ref #6): every card shares
@@ -217,7 +223,15 @@ export function lerpExp(current, target, dt, rate = 8) {
  *
  *   i       card index, 0..n-1 (0 = most recent listen)
  *   scroll  px along the row; scroll = i*spacing centres card i
- *   n       total cards (z-order: left stacks over right, centre on top)
+ *   n       total cards
+ *
+ * With { loop: true } the row is a circle of period n*spacing: scroll is
+ * unbounded and every card sits at its nearest wrapped position, so after
+ * the last cover the first comes around again.
+ *
+ * z-order is a pyramid centred on the screen: the centred card is on top
+ * and cards stack lower the farther they are from centre, symmetrically,
+ * so the left side cascades exactly like the right.
  *
  * Returns { x, ry, z, s, focus, zi }:
  *   x  px from screen centre   ry  rotateY deg (0 = facing viewer)
@@ -226,15 +240,18 @@ export function lerpExp(current, target, dt, rate = 8) {
  */
 export function coverTransform(i, scroll, n, {
   spacing = 150, tilt = 56, lift = 170, spread = 120, window: win = 1.45,
+  loop = false,
 } = {}) {
-  const d = (i * spacing - scroll) / spacing;
+  let raw = i * spacing - scroll;
+  if (loop && n > 0) raw = wrapDelta(raw, n * spacing);
+  const d = raw / spacing;
   const a = Math.abs(d);
   const focus = a >= win ? 0 : Math.pow(1 - a / win, 2.2);
   const x = d * spacing + Math.sign(d) * spread * Math.min(a, 1);
   const ry = tilt * (1 - focus);
   const z = lift * focus;
   const s = 0.88 + 0.16 * focus;
-  const zi = (n - i) + Math.round(200 * focus);
+  const zi = Math.max(1, 500 - Math.round(a * 14));
   return { x, ry, z, s, focus, zi };
 }
 
@@ -263,8 +280,10 @@ export function timeAgo(thenMs, nowMs = Date.now()) {
 }
 
 /* Which card is closest to centre for a given scroll. */
-export function centerIndex(scroll, spacing, n) {
-  return clamp(Math.round(scroll / spacing), 0, Math.max(0, n - 1));
+export function centerIndex(scroll, spacing, n, loop = false) {
+  const i = Math.round(scroll / spacing);
+  if (loop && n > 0) return ((i % n) + n) % n;
+  return clamp(i, 0, Math.max(0, n - 1));
 }
 
 /*

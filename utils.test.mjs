@@ -202,7 +202,7 @@ test('refillWindow scales with the bite and never breaks the 20 s budget', () =>
 /* ================= v10 additions ================= */
 
 import {
-  lerpExp, coverTransform, normalizeWheel, timeAgo, centerIndex, nearestCover, dockMagnify,
+  lerpExp, coverTransform, wrapDelta, normalizeWheel, timeAgo, centerIndex, nearestCover, dockMagnify,
   stackLayout, flingOutcome, exciteTarget, pickImage, uniqueTracks,
   normalizeRecent, fmtDuration, recoveryBand, fmtStrain,
 } from './utils.js';
@@ -231,13 +231,38 @@ test('coverTransform centres, flattens and lifts the focused card', () => {
   assert.ok(f.x > 2 * 150, 'spread pushes neighbours outward');
 });
 
-test('coverTransform z-order: left over right, centre above all', () => {
+test('coverTransform z-order is a pyramid: centre on top, symmetric sides', () => {
   const n = 20, scroll = 7 * 150;
-  const left = coverTransform(5, scroll, n);
-  const right = coverTransform(9, scroll, n);
   const mid = coverTransform(7, scroll, n);
-  assert.ok(left.zi > right.zi, 'left card stacks over right card');
-  assert.ok(mid.zi > left.zi && mid.zi > right.zi, 'centre is on top');
+  const l1 = coverTransform(6, scroll, n);
+  const l2 = coverTransform(5, scroll, n);
+  const r1 = coverTransform(8, scroll, n);
+  const r2 = coverTransform(9, scroll, n);
+  assert.ok(mid.zi > l1.zi && mid.zi > r1.zi, 'centre is on top');
+  assert.ok(l1.zi > l2.zi, 'left side: nearer centre stacks higher');
+  assert.ok(r1.zi > r2.zi, 'right side: nearer centre stacks higher');
+  assert.equal(l1.zi, r1.zi, 'equidistant cards share a tier');
+  assert.equal(l2.zi, r2.zi, 'two out: still symmetric');
+});
+
+test('wrapDelta finds the shortest signed way around', () => {
+  assert.equal(wrapDelta(0, 100), 0);
+  assert.equal(wrapDelta(30, 100), 30);
+  assert.equal(wrapDelta(80, 100), -20);
+  assert.equal(wrapDelta(-80, 100), 20);
+  assert.equal(wrapDelta(250, 100), -50);
+  assert.equal(wrapDelta(7, 0), 7, 'degenerate period passes through');
+});
+
+test('coverTransform loops: after the last card the first comes around', () => {
+  const n = 25, sp = 150, opts = { spacing: sp, loop: true };
+  /* centred on the last card: card 0 sits one slot to the RIGHT */
+  const scroll = (n - 1) * sp;
+  const first = coverTransform(0, scroll, n, opts);
+  assert.ok(Math.abs(first.x - (sp + 120)) < 1e-9, 'card 0 wraps to the right side');
+  /* and scrolling past the end keeps centring real cards */
+  const past = coverTransform(0, n * sp, n, opts);
+  assert.equal(past.focus, 1, 'one full lap re-centres card 0');
 });
 
 test('coverTransform is symmetric in focus around the centre', () => {
@@ -273,6 +298,12 @@ test('centerIndex rounds to the nearest card and clamps', () => {
   assert.equal(centerIndex(7 * 150 + 80, 150, 20), 8);
   assert.equal(centerIndex(1e9, 150, 20), 19);
   assert.equal(centerIndex(-50, 150, 20), 0);
+});
+
+test('centerIndex wraps in loop mode', () => {
+  assert.equal(centerIndex(25 * 150, 150, 25, true), 0, 'one lap = card 0');
+  assert.equal(centerIndex(26 * 150, 150, 25, true), 1);
+  assert.equal(centerIndex(-150, 150, 25, true), 24, 'backwards wraps too');
 });
 
 test('nearestCover picks the card under (or nearest to) a click', () => {
