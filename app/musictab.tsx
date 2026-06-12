@@ -22,7 +22,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { getRecentTracks, artLarge, trackKey, type Track } from './lastfm';
 import { noteFor } from './music-notes';
 import {
-  clamp, coverTransform, normalizeWheel, centerIndex, lerpExp, timeAgo,
+  clamp, coverTransform, normalizeWheel, centerIndex, nearestCover, lerpExp, timeAgo,
 } from '../utils.js';
 
 const N = 20;
@@ -162,10 +162,15 @@ export function MusicTab({ active }: { active: boolean }) {
     setTimeout(() => { suppressClick.current = false; }, 80);
   };
 
-  /* click any cover: bring it to the centre (the calm way to browse) */
+  /* click any cover - or the air between covers - to centre the nearest
+     one: the whole layer is a forgiving hit target (the calm way) */
   const centerOn = (i: number) => {
     if (suppressClick.current) return;
     scrollTgt.current = i * spacing;
+  };
+  const onLayerClick = (e: React.MouseEvent) => {
+    if (suppressClick.current || !tracks?.length) return;
+    centerOn(nearestCover(e.clientX, scrollCur.current, n, innerWidth, opts));
   };
 
   const tr = tracks?.[center] ?? null;
@@ -196,6 +201,7 @@ export function MusicTab({ active }: { active: boolean }) {
       className={`music${active ? '' : ' off'}`}
       aria-label="Recent listens"
       onWheel={onWheel}
+      onClick={onLayerClick}
       onPointerDown={onPointerDown}
       onPointerMove={onPointerMove}
       onPointerUp={onPointerUp}
@@ -212,7 +218,6 @@ export function MusicTab({ active }: { active: boolean }) {
               role={t ? 'button' : undefined}
               tabIndex={t && i !== center ? 0 : -1}
               aria-label={t ? `Centre ${t.name} by ${t.artist}` : undefined}
-              onClick={() => centerOn(i)}
               onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); centerOn(i); } }}
               style={{
                 width: cardW,

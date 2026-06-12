@@ -267,6 +267,23 @@ export function centerIndex(scroll, spacing, n) {
   return clamp(Math.round(scroll / spacing), 0, Math.max(0, n - 1));
 }
 
+/*
+ * nearestCover: which card sits closest (in screen x) to a click at
+ * clickX? Inverts coverTransform by brute force - n is tiny - so clicks
+ * landing in the air between tilted covers still pick the right one:
+ * the whole row is a hit target, no dead zones.
+ */
+export function nearestCover(clickX, scroll, n, w, opts = {}) {
+  let best = 0;
+  let bd = Infinity;
+  for (let i = 0; i < n; i++) {
+    const { x } = coverTransform(i, scroll, n, opts);
+    const d = Math.abs(x + w / 2 - clickX);
+    if (d < bd) { bd = d; best = i; }
+  }
+  return best;
+}
+
 /* ---------------- dock magnification (tab bar) ---------------- */
 
 /*

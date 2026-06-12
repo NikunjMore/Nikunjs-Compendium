@@ -519,6 +519,7 @@ main.off {
   inset: 0;
   z-index: 6; /* covers sit over the dot field; the dots live on behind them */
   overflow: hidden;
+  cursor: pointer; /* the whole row is clickable: nearest cover centres */
   transition: opacity 0.45s ease;
 }
 .music.off { opacity: 0; pointer-events: none; visibility: hidden; transition: opacity 0.45s ease, visibility 0s 0.45s; }

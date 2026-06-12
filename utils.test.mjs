@@ -202,7 +202,7 @@ test('refillWindow scales with the bite and never breaks the 20 s budget', () =>
 /* ================= v10 additions ================= */
 
 import {
-  lerpExp, coverTransform, normalizeWheel, timeAgo, centerIndex, dockMagnify,
+  lerpExp, coverTransform, normalizeWheel, timeAgo, centerIndex, nearestCover, dockMagnify,
   stackLayout, flingOutcome, exciteTarget, pickImage, uniqueTracks,
   normalizeRecent, fmtDuration, recoveryBand, fmtStrain,
 } from './utils.js';
@@ -273,6 +273,17 @@ test('centerIndex rounds to the nearest card and clamps', () => {
   assert.equal(centerIndex(7 * 150 + 80, 150, 20), 8);
   assert.equal(centerIndex(1e9, 150, 20), 19);
   assert.equal(centerIndex(-50, 150, 20), 0);
+});
+
+test('nearestCover picks the card under (or nearest to) a click', () => {
+  const n = 20, w = 1440, opts = { spacing: 215, spread: 146 };
+  const scroll = 4 * 215; /* card 4 centred */
+  assert.equal(nearestCover(w / 2, scroll, n, w, opts), 4, 'centre click');
+  const c6 = coverTransform(6, scroll, n, opts);
+  assert.equal(nearestCover(c6.x + w / 2, scroll, n, w, opts), 6, 'direct hit');
+  assert.equal(nearestCover(c6.x + w / 2 + 40, scroll, n, w, opts), 6, 'gap click snaps');
+  assert.equal(nearestCover(1e6, scroll, n, w, opts), n - 1, 'far right clamps');
+  assert.equal(nearestCover(-1e6, scroll, n, w, opts), 0, 'far left clamps');
 });
 
 test('dockMagnify peaks under the pointer and dies at the radius', () => {
