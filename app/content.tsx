@@ -210,7 +210,7 @@ export const EXP: Record<string, ReactNode> = {
   ),
   d3: (
     <>
-      <Was label="vitamin D3" ic="sun" />
+      <Was label="Vitamin D₃" ic="sun" />
       <T text=". Right now " /><B text="bouldering" /><Ic n="mountain" />
       <T text=", " /><B text="pickleball" /><Ic n="paddle" />
       <T text=", and random endeavors with friends take the cake" />

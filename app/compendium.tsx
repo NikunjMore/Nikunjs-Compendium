@@ -353,8 +353,10 @@ export default function Compendium() {
             <T text="I think there is not enough " />
             <Tok id="orders" label="second and third order thinking" />
             <T text=". I love getting " />
-            <Tok id="d3" label="vitamin D3" />
-            <T text=". Oh, and " />
+            <Tok id="d3" label="Vitamin D₃" />
+            <T text="." />
+            <br />
+            <T text="Oh, and " />
             <strong><T text="Coke Zero" /></strong>
             <Ic n="can" />
             <T text="." />
