@@ -2,10 +2,11 @@
  * photo.ts
  * The portrait: a second population of dots in the same field.
  *
- * The photo on the right is not an <img>. It is ~50,000 dots sampled from
- * the picture's luminance, drawn by the same renderer with the same soft
- * disc sprite as the rest of the field, so the page stays one substance
- * throughout: everything you see is dots.
+ * The photo on the right is not an <img>. It is ~85,000 dots sampled from
+ * the picture's luminance (unsharp-masked so features keep their edges),
+ * drawn by the same renderer with the same disc sprite as the rest of the
+ * field, so the page stays one substance throughout: everything you see
+ * is dots.
  *
  * This population is sovereign. It is never claimable by the text engine,
  * and it ignores the crowd dial, so however much of the compendium has been
@@ -29,9 +30,10 @@ import { clamp, mulberry32 } from '../utils.js';
 /* the text column is capped at 920px; keep a gutter beyond it */
 const COL = 944;
 const MARGIN = 26;
-const GRID_W = 200;          /* sample columns; rows follow the aspect */
+const GRID_W = 260;          /* sample columns; rows follow the aspect */
 const MIN_ZONE = 180;        /* px of free width required to show at all */
 const MIN_VIEW = 1100;       /* below this viewport width, bow out */
+const SHARPEN = 0.6;         /* unsharp-mask strength on the sampled tones */
 
 const VERT = /* glsl */ `
   attribute vec2 aUV;
@@ -57,7 +59,7 @@ const VERT = /* glsl */ `
     pos += vec2(
       sin(uTime * 1.1 + aSeed * 41.0),
       cos(uTime * 0.9 + aSeed * 27.0)
-    ) * 0.45;
+    ) * 0.32;
 
     /* the cursor's soft lens: push, swirl, settle */
     vec2 d = pos - uPtr;
@@ -70,25 +72,28 @@ const VERT = /* glsl */ `
       tang * 6.0 * sin(uTime * 1.6 + aSeed * 13.0)
     ) * fall * uHov;
 
-    float tw = 0.93 + 0.07 * sin(aSeed * 6.2832 + uTime * (0.7 + aSeed));
-    float a = (0.10 + 0.80 * aLum) * tw;
-    a *= 1.0 + 0.22 * fall * uHov;
+    float tw = 0.95 + 0.05 * sin(aSeed * 6.2832 + uTime * (0.7 + aSeed));
+    float a = (0.08 + 0.84 * aLum) * tw;
+    a *= 1.0 + 0.18 * fall * uHov;
     vA = a * eb * uFade * uVis;
 
-    float sz = uSpacing * (0.58 + 0.85 * aLum) * (1.0 + 0.45 * fall * uHov);
+    float sz = uSpacing * (0.52 + 0.70 * aLum) * (1.0 + 0.45 * fall * uHov);
     gl_Position = projectionMatrix * modelViewMatrix * vec4(pos, 0.0, 1.0);
-    gl_PointSize = clamp(sz, 1.0, 5.0) * uDpr;
+    gl_PointSize = clamp(sz, 0.8, 4.0) * uDpr;
   }
 `;
 
-/* the same soft disc the field uses, so both populations read as one ink */
+/*
+ * The same disc as the field, drawn a touch tighter: at ~2px the softer
+ * falloff reads as blur, and the portrait wants its edges back.
+ */
 const FRAG = /* glsl */ `
   precision mediump float;
   varying float vA;
   void main() {
     vec2 c = gl_PointCoord - 0.5;
     float d = length(c);
-    float a = smoothstep(0.5, 0.14, d) * vA;
+    float a = smoothstep(0.5, 0.24, d) * vA;
     if (a < 0.003) discard;
     gl_FragColor = vec4(vec3(1.0), a);
   }
@@ -135,21 +140,47 @@ export class PhotoLayer {
     cx.drawImage(img, 0, 0, gw, gh);
     const data = cx.getImageData(0, 0, gw, gh).data;
 
+    /* tone-map the whole grid first: S-curve for contrast... */
+    const tones = new Float32Array(gw * gh);
+    for (let i = 0; i < gw * gh; i++) {
+      const o = i * 4;
+      const l = (0.2126 * data[o] + 0.7152 * data[o + 1] + 0.0722 * data[o + 2]) / 255;
+      const t = clamp((l - 0.04) / 0.89, 0, 1);
+      tones[i] = Math.pow(t * t * (3 - 2 * t), 1.16);
+    }
+    /* ...then an unsharp mask, so eyes, jaw, and the certificate's border
+       carry their edges at dot scale instead of dissolving into the glow */
+    const blur = new Float32Array(gw * gh);
+    for (let y = 0; y < gh; y++) {
+      for (let x = 0; x < gw; x++) {
+        let s = 0;
+        let n = 0;
+        for (let dy = -1; dy <= 1; dy++) {
+          const yy = y + dy;
+          if (yy < 0 || yy >= gh) continue;
+          for (let dx = -1; dx <= 1; dx++) {
+            const xx = x + dx;
+            if (xx < 0 || xx >= gw) continue;
+            s += tones[yy * gw + xx];
+            n++;
+          }
+        }
+        blur[y * gw + x] = s / n;
+      }
+    }
+
     const rng = mulberry32(0x0070bea7);
     const uv: number[] = [];
     const lum: number[] = [];
     const seed: number[] = [];
     for (let y = 0; y < gh; y++) {
       for (let x = 0; x < gw; x++) {
-        const o = (y * gw + x) * 4;
-        const l = (0.2126 * data[o] + 0.7152 * data[o + 1] + 0.0722 * data[o + 2]) / 255;
-        /* a gentle S-curve: lift the mids, deepen the toe, keep highlights */
-        const t = clamp((l - 0.04) / 0.89, 0, 1);
-        const tone = Math.pow(t * t * (3 - 2 * t), 1.12);
+        const i = y * gw + x;
+        const tone = clamp(tones[i] + SHARPEN * (tones[i] - blur[i]), 0, 1);
         if (tone < 0.012) continue;
         uv.push(
-          (x + 0.5 + (rng() - 0.5) * 0.66) / gw,
-          (y + 0.5 + (rng() - 0.5) * 0.66) / gh,
+          (x + 0.5 + (rng() - 0.5) * 0.6) / gw,
+          (y + 0.5 + (rng() - 0.5) * 0.6) / gh,
         );
         lum.push(tone);
         seed.push(rng());
