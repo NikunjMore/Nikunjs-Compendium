@@ -457,3 +457,44 @@ export function fmtStrain(x) {
   if (!Number.isFinite(x)) return '0.0';
   return (Math.round(clamp(x, 0, 21) * 10) / 10).toFixed(1);
 }
+
+/* ---------------- centred-cover parallax (music tab, video ref #7) ------- */
+
+/*
+ * Tilt for a card that leans toward the cursor: the edge under the pointer
+ * comes toward the viewer (the reference recording's feel). nx/ny are the
+ * pointer's offset from the card centre, normalized so ±1 saturates the
+ * tilt; returns degrees.
+ *
+ * CSS sign notes (the part everyone gets backwards): positive rotateY sends
+ * the RIGHT edge away from the viewer, positive rotateX brings the BOTTOM
+ * edge toward the viewer - hence ry = -nx·max and rx = +ny·max.
+ */
+export function cardTilt(nx, ny, max = 11) {
+  return {
+    rx: clamp(ny, -1, 1) * max,
+    ry: 0 - clamp(nx, -1, 1) * max, /* 0- (not unary minus) keeps -0 out */
+  };
+}
+
+/*
+ * Where the light sheen sits on the card, as CSS percentages. Clamped a
+ * little past the edges so the glow slides off smoothly instead of pinning
+ * to the border while the pointer roams the rest of the screen.
+ */
+export function glarePos(x, y, left, top, w, h) {
+  return {
+    gx: clamp(((x - left) / Math.max(1, w)) * 100, -30, 130),
+    gy: clamp(((y - top) / Math.max(1, h)) * 100, -30, 130),
+  };
+}
+
+/*
+ * 1 when cover i sits exactly centred, fading linearly to 0 one slot away.
+ * Distance is measured the shortest way around the loop (wrapDelta), so the
+ * parallax never glitches across the wrap seam.
+ */
+export function centerCloseness(scroll, i, spacing, n) {
+  const d = Math.abs(wrapDelta(i * spacing - scroll, n * spacing));
+  return clamp(1 - d / spacing, 0, 1);
+}

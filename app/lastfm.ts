@@ -31,18 +31,30 @@ export function artLarge(url: string): string {
 export const trackKey = (artist: string, name: string) =>
   `${artist} — ${name}`.toLowerCase();
 
-export async function getRecentTracks(n = 20): Promise<Track[]> {
-  try {
-    const hit = sessionStorage.getItem(CACHE_KEY);
-    if (hit) {
-      const { at, tracks } = JSON.parse(hit);
-      if (Date.now() - at < CACHE_MS && Array.isArray(tracks) && tracks.length) {
-        return tracks as Track[];
+/*
+ * { fresh: true } is the live-poll path: it skips the session cache AND the
+ * browser's HTTP cache (the edge function sends max-age=30), so a poll
+ * always reaches the function. The function's own 60 s window is then the
+ * only staleness left - "now playing" flips within about a minute of the
+ * song starting, with no reload.
+ */
+export async function getRecentTracks(
+  n = 20,
+  { fresh = false }: { fresh?: boolean } = {},
+): Promise<Track[]> {
+  if (!fresh) {
+    try {
+      const hit = sessionStorage.getItem(CACHE_KEY);
+      if (hit) {
+        const { at, tracks } = JSON.parse(hit);
+        if (Date.now() - at < CACHE_MS && Array.isArray(tracks) && tracks.length) {
+          return tracks as Track[];
+        }
       }
-    }
-  } catch { /* private mode */ }
+    } catch { /* private mode */ }
+  }
 
-  const res = await fetch(`${FN_BASE}/music`);
+  const res = await fetch(`${FN_BASE}/music`, fresh ? { cache: 'no-store' } : undefined);
   if (!res.ok) throw new Error(`music feed: ${res.status}`);
   const json = await res.json();
   /* enriched shape { recent, counts }; tolerate the bare legacy payload */

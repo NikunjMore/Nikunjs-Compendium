@@ -47,6 +47,9 @@ export default function Compendium() {
 
   const switchTab = useCallback((t: TabId) => {
     setTab(t);
+    /* leaving the person tab mid-assembly: finish the words instantly, so
+       no dot is ever left locked to a letter, hovering over another tab */
+    if (t !== 'person') engineRef.current?.finishAll();
     try {
       history.replaceState(null, '', t === 'person' ? location.pathname : `#${t}`);
     } catch { /* sandboxed iframes */ }
@@ -70,22 +73,46 @@ export default function Compendium() {
    *  --fs  font scale [0.74-1]: the last resort when --r bottoms out and
    *        the fully-expanded page still overflows; re-solve --r after.
    *
-   * Desktop fits any expansion state on one screen; mobile keeps natural
-   * sizing and scrolls instead.
+   * Since v10.4 the desktop solve measures the GHOST - an invisible twin of
+   * the prose rendered with every token open (see <main>'s last child) - so
+   * the rhythm is solved once for the page at its largest. Each live
+   * paragraph is then pinned (min-height) to its fully-expanded height.
+   * The space an expansion needs exists from the very first paint: opening
+   * a token fills room that was always there, and nothing else on the page
+   * moves. Mobile keeps natural sizing and scrolls instead.
    */
+  const ghostRef = useRef<HTMLDivElement>(null);
+
   const fitRhythm = useCallback(() => {
     const m = rootRef.current;
     if (!m) return;
+    const g = ghostRef.current;
     /* both knobs live on :root so body-level type sizing can see them */
     const knobs = document.documentElement.style;
     m.classList.add('measuring');
 
     const isMobile = innerWidth <= 700 || (innerHeight <= 620 && innerWidth <= 900);
+    const livePs = Array.from(m.querySelectorAll<HTMLElement>('p[data-p]'))
+      .filter((p) => !p.closest('.ghost'));
+
+    /* mobile scrolls naturally: no reservations, measure the live column */
+    if (isMobile || !g) for (const p of livePs) p.style.removeProperty('min-height');
+
+    /* the ghost is height:0 in flow, so its inner height is read directly
+       and the live column's padding is added back on */
+    const probe = () => {
+      if (isMobile || !g) return m.offsetHeight;
+      const cs = getComputedStyle(m);
+      return g.offsetHeight
+        + (parseFloat(cs.paddingTop) || 0)
+        + (parseFloat(cs.paddingBottom) || 0);
+    };
+
     const solveR = () => {
       knobs.setProperty('--r', '1');
-      const h1 = m.offsetHeight;
+      const h1 = probe();
       knobs.setProperty('--r', '2');
-      const h2 = m.offsetHeight;
+      const h2 = probe();
       const slope = Math.max(40, h2 - h1);
       const rMin = isMobile ? 0.9 : 0.62;
       const r = Math.max(rMin, Math.min(3.6, 1 + (innerHeight - 8 - h1) / slope));
@@ -96,12 +123,24 @@ export default function Compendium() {
     solveR();
     /* second knob: shrink the type when rhythm alone cannot fit the page */
     for (let pass = 0; pass < 2 && !isMobile; pass++) {
-      const over = m.offsetHeight - (innerHeight - 8);
+      const over = probe() - (innerHeight - 8);
       if (over <= 0) break;
       const cur = parseFloat(knobs.getPropertyValue('--fs') || '1') || 1;
-      const fs = Math.max(0.72, Math.min(1, cur * ((innerHeight - 8) / m.offsetHeight)));
+      const fs = Math.max(0.72, Math.min(1, cur * ((innerHeight - 8) / probe())));
       knobs.setProperty('--fs', String(Math.round(fs * 1000) / 1000));
       solveR(); /* spacing re-solved at the smaller type size */
+    }
+
+    /* reserve the room every expansion will ever need, right now */
+    if (!isMobile && g) {
+      const finals = new Map<string, number>();
+      for (const gp of Array.from(g.querySelectorAll<HTMLElement>('p[data-p]'))) {
+        finals.set(gp.dataset.p!, gp.offsetHeight);
+      }
+      for (const p of livePs) {
+        const fh = finals.get(p.dataset.p!);
+        if (fh) p.style.minHeight = `${fh}px`;
+      }
     }
 
     void m.offsetHeight; /* flush layout before transitions return */
@@ -142,6 +181,7 @@ export default function Compendium() {
     flipRef.current.els = [];
     const rects = new Map<HTMLElement, DOMRect>();
     for (const el of Array.from(root.querySelectorAll<HTMLElement>('.hdr, footer, .tok, .ic, span.ch'))) {
+      if (el.closest('.ghost')) continue; /* the invisible twin never glides */
       if (el.matches('span.ch') && el.closest('.tok')) continue; /* token moves as one box */
       rects.set(el, el.getBoundingClientRect());
     }
@@ -238,8 +278,21 @@ export default function Compendium() {
 
       const showChrome = () => setSettled(true);
 
-      if (!engine.ok) {
-        for (const b of blocks) void engine.assemble(b);
+      /*
+       * The intro belongs to the compendium tab alone. Arriving on #music
+       * or #activity (a reload, a shared link), the prose is revealed
+       * silently behind the scenes: no dot theatre over the other tabs,
+       * and nothing left half-assembled to haunt them. Switching back to
+       * the person tab later, the words are simply there.
+       */
+      const away = location.hash === '#music' || location.hash === '#activity';
+
+      if (!engine.ok || away) {
+        for (const b of blocks) {
+          for (const s of Array.from(b.querySelectorAll<HTMLElement>('span.ch'))) {
+            s.classList.add('on');
+          }
+        }
         showChrome();
         return;
       }
@@ -286,8 +339,15 @@ export default function Compendium() {
     },
   }), [open, bump, flipSnapshot]);
 
+  /* the ghost renders every token open; its api is pure stillness */
+  const ghostApi = useMemo<CompendiumApi>(() => ({
+    isOpen: () => true,
+    expand: () => {},
+    assembleNode: () => {},
+  }), []);
+
   /* the dot crowd thins toward silence as every token opens */
-  const TOTAL_TOKENS = 17;
+  const TOTAL_TOKENS = 18;
   const openness = Math.min(1, open.size / TOTAL_TOKENS);
 
   useEffect(() => {
@@ -345,77 +405,24 @@ export default function Compendium() {
         {/* on small screens the portrait lives here, in flow, scaled to the screen */}
         <div id="photo-slot" ref={slotRef} aria-hidden="true" />
 
-        <section aria-label="About">
-          <p data-block>
-            <T text="I like building things, especially with " />
-            <Tok id="ambitious" label="ambitious people" />
-            <T text=". I'm navigating the world " />
-            <Tok id="oneproject" label="one project at a time" />
-            <T text="." />
-          </p>
-        </section>
+        <Prose settled={settled} />
 
-        <section aria-label="Experience">
-          <h2 className={`hdr${settled ? ' show' : ''}`}>Experience</h2>
-          <p data-block>
-            <T text="Currently building " />
-            <Tok id="insight" label="The Insight Company of California" />
-            <T text="." />
-          </p>
-        </section>
-
-        <section aria-label="Projects">
-          <h2 className={`hdr${settled ? ' show' : ''}`}>Projects</h2>
-          <p data-block>
-            <T text="After hours, I'm running " />
-            <Tok id="experiments" label="three experiments" />
-            <T text="." />
-          </p>
-        </section>
-
-        <section aria-label="School">
-          <h2 className={`hdr${settled ? ' show' : ''}`}>School</h2>
-          <p data-block>
-            <T text="I studied at " />
-            <Tok id="deanza" label="De Anza College" />
-            <T text=", and now I'm headed to " />
-            <Tok id="berkeley" label="UC Berkeley" />
-            <T text="." />
-          </p>
-        </section>
-
-        <section aria-label="Misc">
-          <h2 className={`hdr${settled ? ' show' : ''}`}>Misc</h2>
-          <p data-block>
-            <T text="I think there is not enough " />
-            <Tok id="orders" label="second and third order thinking" />
-            <T text=". I love getting " />
-            <Tok id="d3" label="Vitamin D₃" />
-            <T text="." />
-            <br />
-            <T text="Oh, and " />
-            <strong><T text="Coke Zero" /></strong>
-            <Ic n="can" />
-            <T text="." />
-          </p>
-        </section>
-
-        <section aria-label="Contact">
-          <h2 className={`hdr${settled ? ' show' : ''}`}>Contact</h2>
-          <p data-block>
-            <T text="You can find me in the " />
-            <strong><T text="Bay Area" /></strong>
-            <Ic n="pin" />
-            <T text=", on " />
-            <a href="https://www.linkedin.com/in/nikunj-more/" target="_blank" rel="noopener noreferrer">
-              <T text="LinkedIn" />
-            </a>
-            <Ic n="ext" />
-            <T text=", or via " />
-            <Tok id="email" label="email" />
-            <T text="." />
-          </p>
-        </section>
+        {/*
+          The ghost: an invisible, zero-height twin of the page rendered with
+          every token open. fitRhythm solves the rhythm against it and pins
+          each live paragraph to its fully-expanded height, so the layout is
+          spaced for everything from the very beginning and expansions never
+          push the page around.
+        */}
+        <div className="ghost" aria-hidden="true">
+          <div ref={ghostRef}>
+            <header><h1><T text="Nikunj's Compendium" /></h1></header>
+            <Ctx.Provider value={ghostApi}>
+              <Prose ghost settled />
+            </Ctx.Provider>
+            <footer className="show"><span>·</span></footer>
+          </div>
+        </div>
 
         <footer className={settled ? 'show' : ''}>
           <span id="counter">
@@ -454,5 +461,96 @@ export default function Compendium() {
       {/* the dock (ref #3): person / music / activity */}
       <Dock tab={tab} onTab={switchTab} show={settled} />
     </Ctx.Provider>
+  );
+}
+
+/*
+ * The prose, once. The live page and the ghost render this same tree, so
+ * the two can never drift apart: ghost mode drops the data-block markers
+ * (the intro must not assemble the twin) and the surrounding Ctx.Provider
+ * decides whether tokens are clickable buttons or fully-open expansions.
+ * data-p names each paragraph so fitRhythm can pair live and ghost.
+ */
+function Prose({ ghost = false, settled }: { ghost?: boolean; settled: boolean }) {
+  const db = ghost ? {} : { 'data-block': true };
+  const hdr = `hdr${settled ? ' show' : ''}`;
+  return (
+    <>
+      <section aria-label="About">
+        <p {...db} data-p="about">
+          <T text="I like building things, especially with " />
+          <Tok id="ambitious" label="ambitious people" />
+          <T text=". I'm navigating the world " />
+          <Tok id="oneproject" label="one project at a time" />
+          <T text="." />
+        </p>
+      </section>
+
+      <section aria-label="Experience">
+        <h2 className={hdr}>Experience</h2>
+        <p {...db} data-p="experience">
+          <T text="Currently building " />
+          <Tok id="insight" label="The Insight Company of California" />
+          <T text="." />
+        </p>
+      </section>
+
+      <section aria-label="Projects">
+        <h2 className={hdr}>Projects</h2>
+        <p {...db} data-p="projects">
+          <T text="After hours, I'm running " />
+          <Tok id="experiments" label="three experiments" />
+          <T text="." />
+        </p>
+      </section>
+
+      <section aria-label="School">
+        <h2 className={hdr}>School</h2>
+        <p {...db} data-p="school">
+          <T text="I studied at " />
+          <Tok id="deanza" label="De Anza College" />
+          <T text=", and now I'm headed to " />
+          <Tok id="berkeley" label="UC Berkeley" />
+          <T text="." />
+        </p>
+      </section>
+
+      <section aria-label="Misc">
+        <h2 className={hdr}>Misc</h2>
+        <p {...db} data-p="misc">
+          <T text="I think there is not enough " />
+          <Tok id="orders" label="second and third order thinking" />
+          <T text=". I love getting " />
+          <Tok id="d3" label="Vitamin D₃" />
+          <T text="." />
+        </p>
+        {/* its own line, with air above: the can deserves the pause */}
+        <p {...db} data-p="coke">
+          <T text="Oh, and " />
+          <strong><T text="Coke Zero" /></strong>
+          <Ic n="can" />
+          <T text="." />
+        </p>
+      </section>
+
+      <section aria-label="Contact">
+        <h2 className={hdr}>Contact</h2>
+        <p {...db} data-p="contact">
+          <T text="You can find me in the " />
+          <strong><T text="Bay Area" /></strong>
+          <Ic n="pin" />
+          <T text=", on " />
+          <a href="https://www.linkedin.com/in/nikunj-more/" target="_blank" rel="noopener noreferrer">
+            <T text="LinkedIn" />
+          </a>
+          <Ic n="ext" />
+          <T text=", via " />
+          <Tok id="email" label="email" />
+          <T text=", or by " />
+          <Tok id="phone" label="phone" />
+          <T text="." />
+        </p>
+      </section>
+    </>
   );
 }

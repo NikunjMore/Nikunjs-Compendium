@@ -79,7 +79,7 @@ re-runs the intro; the click counter persists in `localStorage`.
 
 ```bash
 npm install
-npm test         # 16 unit tests on the pure engine math
+npm test         # 47 unit tests on the pure engine math
 npm run dev      # next dev
 npm run build    # type-check + static export to out/
 ```
@@ -150,7 +150,43 @@ function.
 
 ### Tests
 
-`npm test` — 37 unit tests over the pure logic in `utils.js`: the dot
+`npm test` — 47 unit tests over the pure logic in `utils.js`: the dot
 engine's noise/spring/schedule math plus the v10 geometry (cover flow,
-dock magnification, card-stack fan, fling outcomes, cursor flare) and
-the Last.fm/Whoop normalizers.
+dock magnification, card-stack fan, fling outcomes, cursor flare,
+centred-cover parallax) and the Last.fm/Whoop normalizers.
+
+## v10.4 — the parallax, the reserved page, the quiet fixes
+
+- **Centred-cover parallax (video ref #7).** The centred album card on the
+  music tab leans toward the cursor (the edge under the pointer comes to
+  you, max 11°) with a screen-blended light sheen riding the pointer
+  across the art. Both melt away with `centerCloseness` the moment the
+  row slides, so only a settled, centred card ever tilts. Pure math in
+  `cardTilt` / `glarePos` / `centerCloseness` (unit tested); applied in
+  the same rAF loop that drives the row, derived from `coverTransform`
+  rather than measured, so there is no layout feedback.
+- **Space reserved from the first paint.** `<main>` now carries a ghost:
+  an invisible, zero-height twin of the prose rendered with every token
+  open. The rhythm solver fits the ghost (the page at its largest) and
+  pins each live paragraph to its fully-expanded height, so clicking a
+  token fills room that already existed - nothing below ever compresses
+  or shifts. The column also widened (880 → 960 px) and the photo deck
+  keeps a bigger buffer (48 px) off its edge.
+- **The intro stays home.** Reloading on `#music` or `#activity` no longer
+  plays the compendium's dot intro over that tab; the prose is revealed
+  silently instead. Switching tabs mid-assembly finishes the words
+  instantly (`finishAll`), and the shader now gates the cursor flare on a
+  dot's own alpha - dead dots parked at old glyph positions can never be
+  hovered back into ghost words on the other tabs.
+- **Highlights follow the words.** A token's grey box (and the border
+  beam) now appears only after its LAST character lands, instead of
+  popping in while the word is still dots.
+- **Photos read solid.** The deck sits above the dot field; nothing
+  drifts across a face. "Oh, and Coke Zero." got its own line, with air.
+- **Live now-playing.** The music feed re-polls fresh (no session cache,
+  `cache: no-store`) every 30 s while the tab is open and revalidates on
+  visibility, so "now playing" flips within about a minute without a
+  reload (the edge function's 60 s window is the only staleness left).
+- **Contact, sorted.** Email expands to the two addresses (and which is
+  which); phone is its own token. No more phone number hiding inside
+  "email".

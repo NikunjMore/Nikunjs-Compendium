@@ -32,7 +32,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { stackPose, dragPromote, flingOutcome } from '../utils.js';
 import { PHOTOS, PHOTO_ASPECT } from './photos';
 
-const GAP_LEFT = 36;   /* air between the text column and the deck   */
+const GAP_LEFT = 48;   /* air between the text column and the deck   */
 const MIN_ZONE = 160;  /* below this width the desktop deck hides    */
 const MIN_VIEW = 900;  /* below this viewport, slot mode takes over  */
 const MAX_BACKS = 3;

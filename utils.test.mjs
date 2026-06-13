@@ -463,3 +463,46 @@ test('fmtStrain clamps to 0-21 with one decimal', () => {
   assert.equal(fmtStrain(-2), '0.0');
   assert.equal(fmtStrain(NaN), '0.0');
 });
+
+/* ================= v10.4: centred-cover parallax ================= */
+
+import { cardTilt, glarePos, centerCloseness } from './utils.js';
+
+test('cardTilt leans the cursor edge toward the viewer and clamps', () => {
+  const max = 11;
+  /* cursor right of centre: right edge comes forward = negative rotateY */
+  assert.equal(cardTilt(1, 0, max).ry, -max);
+  assert.equal(cardTilt(-1, 0, max).ry, max);
+  /* cursor below centre: bottom edge comes forward = positive rotateX */
+  assert.equal(cardTilt(0, 1, max).rx, max);
+  assert.equal(cardTilt(0, -1, max).rx, -max);
+  /* dead centre: flat */
+  assert.deepEqual(cardTilt(0, 0, max), { rx: 0, ry: 0 });
+  /* half-way: proportional */
+  assert.equal(cardTilt(0.5, 0, max).ry, -max / 2);
+  /* far outside the card: clamped, never beyond max */
+  assert.equal(cardTilt(5, -7, max).ry, -max);
+  assert.equal(cardTilt(5, -7, max).rx, -max);
+});
+
+test('glarePos maps the pointer to card percentages, gently clamped', () => {
+  assert.deepEqual(glarePos(50, 50, 0, 0, 100, 100), { gx: 50, gy: 50 });
+  assert.deepEqual(glarePos(0, 100, 0, 0, 100, 100), { gx: 0, gy: 100 });
+  assert.deepEqual(glarePos(125, 25, 100, 0, 100, 100), { gx: 25, gy: 25 });
+  const off = glarePos(1e4, -1e4, 0, 0, 100, 100);
+  assert.equal(off.gx, 130, 'slides just past the right edge, no further');
+  assert.equal(off.gy, -30, 'slides just past the top edge, no further');
+  /* a degenerate card never divides by zero */
+  assert.ok(Number.isFinite(glarePos(10, 10, 0, 0, 0, 0).gx));
+});
+
+test('centerCloseness is 1 at centre, 0 a slot away, and survives the seam', () => {
+  assert.equal(centerCloseness(0, 0, 100, 10), 1);
+  assert.equal(centerCloseness(50, 0, 100, 10), 0.5);
+  assert.equal(centerCloseness(100, 0, 100, 10), 0);
+  assert.equal(centerCloseness(250, 0, 100, 10), 0, 'clamps far away');
+  /* the loop seam: cover 0 viewed from the far side of the circle */
+  assert.equal(centerCloseness(950, 0, 100, 10), 0.5);
+  assert.equal(centerCloseness(1000, 0, 100, 10), 1, 'a full lap is centred again');
+  assert.equal(centerCloseness(0, 9, 100, 10), 0, 'last cover sits one slot off');
+});

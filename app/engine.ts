@@ -68,9 +68,15 @@ const FRAG = /* glsl */ `
     vec2  c = gl_PointCoord - 0.5;
     float d = length(c);
     float a = smoothstep(0.5, 0.14, d) * vA;
-    /* cursor flare: excited dots burn brighter with a hot, tight core */
+    /* cursor flare: excited dots burn brighter with a hot, tight core.
+       The additive core is gated on the dot's own alpha: dead dots (the
+       corpses parked at old glyph positions after an assembly) and
+       crowd-hidden dots have vA ~ 0, so the cursor can never light them
+       back up into ghost words on the other tabs. The faintest LIVING
+       dot idles around vA 0.017, comfortably above the gate. */
+    float living = smoothstep(0.0, 0.012, vA);
     a *= 1.0 + 1.8 * vE;
-    a += vE * smoothstep(0.22, 0.0, d) * 0.85;
+    a += vE * living * smoothstep(0.22, 0.0, d) * 0.85;
     if (a < 0.003) discard;
     gl_FragColor = vec4(vec3(1.0), min(a, 1.0));
   }

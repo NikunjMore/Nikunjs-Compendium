@@ -29,13 +29,14 @@ import { getRecentTracks, artLarge, trackKey, type Track } from './lastfm';
 import { noteFor } from './music-notes';
 import {
   clamp, coverTransform, wrapDelta, normalizeWheel, wheelSteps, centerIndex,
-  nearestCover, lerpExp, timeAgo,
+  nearestCover, lerpExp, timeAgo, cardTilt, glarePos, centerCloseness,
 } from '../utils.js';
 
 const N = 25;
 const SKELETON = 9;
-const POLL_MS = 60_000;
+const POLL_MS = 30_000;   /* fresh fetch twice a minute while the tab is open */
 const SNAP_AFTER_MS = 260; /* idle this long -> settle on the nearest card */
+const TILT_MAX = 11;      /* degrees, the centred card's parallax (ref #7) */
 
 export function MusicTab({ active }: { active: boolean }) {
   const [tracks, setTracks] = useState<Track[] | null>(null);
@@ -46,6 +47,7 @@ export function MusicTab({ active }: { active: boolean }) {
   const [, setTick] = useState(0); /* refreshes the "Xm ago" line */
 
   const cardRefs = useRef<(HTMLDivElement | null)[]>([]);
+  const shineRefs = useRef<(HTMLDivElement | null)[]>([]);
   const scrollCur = useRef(0);
   const scrollTgt = useRef(0);
   const raf = useRef(0);
@@ -55,12 +57,15 @@ export function MusicTab({ active }: { active: boolean }) {
   const tracksRef = useRef<Track[] | null>(null);
   const inputAt = useRef(0); /* last wheel/drag timestamp, for the snap */
   const wheelAcc = useRef(0); /* partial wheel travel toward the next step */
+  const mouse = useRef({ x: -1e4, y: -1e4, over: false }); /* parallax driver */
+  const tilt = useRef({ rx: 0, ry: 0 }); /* the centred card's eased lean */
 
   /* ---- data: fetch now, then keep fetching while the tab is open ---- */
-  const load = useCallback(async () => {
+  const load = useCallback(async (revalidate = false) => {
+    if (document.hidden) return; /* a hidden tab can wait for fresh data */
     setErr(false);
     try {
-      const fresh = await getRecentTracks(N);
+      const fresh = await getRecentTracks(N, { fresh: revalidate });
       /* keep the listener's place: follow the centred track by key */
       setTracks((old) => {
         if (old?.length) {
@@ -83,10 +88,19 @@ export function MusicTab({ active }: { active: boolean }) {
 
   useEffect(() => {
     if (!active) return;
+    mouse.current.over = false; /* stale hover from the last visit dies here */
     void load();
-    const poll = setInterval(load, POLL_MS);
+    /* live, not just on reload: re-poll past every cache while you watch,
+       and revalidate the moment the OS tab becomes visible again */
+    const poll = setInterval(() => void load(true), POLL_MS);
     const tick = setInterval(() => setTick((t) => t + 1), 30_000);
-    return () => { clearInterval(poll); clearInterval(tick); };
+    const onVis = () => { if (!document.hidden) void load(true); };
+    document.addEventListener('visibilitychange', onVis);
+    return () => {
+      clearInterval(poll);
+      clearInterval(tick);
+      document.removeEventListener('visibilitychange', onVis);
+    };
   }, [active, load]);
 
   useEffect(() => {
@@ -126,19 +140,59 @@ export function MusicTab({ active }: { active: boolean }) {
         scrollTgt.current = Math.round(scrollTgt.current / spacing) * spacing;
       }
       scrollCur.current = lerpExp(scrollCur.current, scrollTgt.current, dt, 7);
+
+      /*
+       * Parallax (video ref #7): the centred card leans toward the cursor
+       * and carries a light sheen that tracks it. Everything scales with
+       * centerCloseness, so the lean and the light melt away the moment
+       * the row starts sliding, and no other card ever tilts. The card's
+       * screen position is derived from the same maths that places it
+       * (coverTransform), never measured, so there is no feedback loop.
+       */
+      const ci = centerIndex(scrollCur.current, spacing, n, true);
+      const close = centerCloseness(scrollCur.current, ci, spacing, n);
+      const cc = coverTransform(ci, scrollCur.current, n, opts);
+      const cx = innerWidth / 2 + cc.x;
+      const cy = innerHeight * 0.44;
+      const m = mouse.current;
+      let trx = 0;
+      let trry = 0;
+      if (m.over && tracksRef.current?.length) {
+        const lean = cardTilt(
+          (m.x - cx) / (cardW * 0.85),
+          (m.y - cy) / (cardW * 0.85),
+          TILT_MAX,
+        );
+        trx = lean.rx * close;
+        trry = lean.ry * close;
+      }
+      tilt.current.rx = lerpExp(tilt.current.rx, trx, dt, 10);
+      tilt.current.ry = lerpExp(tilt.current.ry, trry, dt, 10);
+
       for (let i = 0; i < n; i++) {
         const el = cardRefs.current[i];
         if (!el) continue;
         const c = coverTransform(i, scrollCur.current, n, opts);
+        const isC = i === ci;
+        const rx = isC ? tilt.current.rx : 0;
+        const ry = c.ry + (isC ? tilt.current.ry : 0);
         el.style.transform =
           `translate3d(${c.x - cardW / 2}px, ${-cardW / 2}px, ${c.z}px) ` +
-          `rotateY(${c.ry}deg) scale(${c.s})`;
+          `rotateY(${ry}deg) rotateX(${rx}deg) scale(${c.s})`;
         el.style.zIndex = String(c.zi);
+        const sh = shineRefs.current[i];
+        if (sh) {
+          if (isC && m.over) {
+            const g = glarePos(m.x, m.y, cx - cardW / 2, cy - cardW / 2, cardW, cardW);
+            sh.style.opacity = String(0.85 * close);
+            sh.style.setProperty('--gx', `${g.gx}%`);
+            sh.style.setProperty('--gy', `${g.gy}%`);
+          } else {
+            sh.style.opacity = '0';
+          }
+        }
       }
-      setCenter((p) => {
-        const ci = centerIndex(scrollCur.current, spacing, n, true);
-        return p === ci ? p : ci;
-      });
+      setCenter((p) => (p === ci ? p : ci));
       raf.current = requestAnimationFrame(step);
     };
     lastT.current = 0;
@@ -166,6 +220,12 @@ export function MusicTab({ active }: { active: boolean }) {
     touch.current = { id: e.pointerId, x: e.clientX, vx: 0, t: performance.now(), moved: 0 };
   };
   const onPointerMove = (e: React.PointerEvent) => {
+    /* the parallax rides every mouse move; touch never tilts the card */
+    if (e.pointerType === 'mouse') {
+      mouse.current.x = e.clientX;
+      mouse.current.y = e.clientY;
+      mouse.current.over = true;
+    }
     const t = touch.current;
     if (!t || e.pointerId !== t.id) return;
     const now = performance.now();
@@ -231,6 +291,7 @@ export function MusicTab({ active }: { active: boolean }) {
       onPointerMove={onPointerMove}
       onPointerUp={onPointerUp}
       onPointerCancel={onPointerUp}
+      onPointerLeave={() => { mouse.current.over = false; }}
     >
       <div className="mrow" style={{ perspective: '1500px' }}>
         {items.map((t, i) => {
@@ -254,15 +315,23 @@ export function MusicTab({ active }: { active: boolean }) {
               }}
             >
               {t ? (
-                <img
-                  src={artLarge(t.art) || t.art}
-                  alt={`${t.name} — ${t.artist}`}
-                  draggable={false}
-                  loading={i < 8 ? 'eager' : 'lazy'}
-                  onError={(e) => {
-                    if (t.art && e.currentTarget.src !== t.art) e.currentTarget.src = t.art;
-                  }}
-                />
+                <>
+                  <img
+                    src={artLarge(t.art) || t.art}
+                    alt={`${t.name} — ${t.artist}`}
+                    draggable={false}
+                    loading={i < 8 ? 'eager' : 'lazy'}
+                    onError={(e) => {
+                      if (t.art && e.currentTarget.src !== t.art) e.currentTarget.src = t.art;
+                    }}
+                  />
+                  {/* the light: a sheen riding the cursor on the centred card */}
+                  <div
+                    ref={(el) => { shineRefs.current[i] = el; }}
+                    className="mshine"
+                    aria-hidden="true"
+                  />
+                </>
               ) : null}
             </div>
           );

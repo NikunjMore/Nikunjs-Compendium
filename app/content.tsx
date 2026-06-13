@@ -100,6 +100,11 @@ function Xp({ id }: { id: string }) {
 
 /* ---------------- the expansion tree ---------------- */
 
+/*
+ * Copy rules (the recruiter test): every click must pay out NEW information
+ * in one breath - what it is, why it matters, or how I think. A label is
+ * never allowed to expand into a restatement of itself.
+ */
 export const EXP: Record<string, ReactNode> = {
   ambitious: (
     <>
@@ -108,7 +113,7 @@ export const EXP: Record<string, ReactNode> = {
       <a href="https://aryasomu.com" target="_blank" rel="noopener noreferrer">
         <B text="Arya Somu" />
       </a>
-      <Ic n="people" /><T text=")" />
+      <Ic n="people" /><T text="; find the people who raise your ceiling, then build with them)" />
     </>
   ),
   oneproject: (
@@ -122,7 +127,7 @@ export const EXP: Record<string, ReactNode> = {
   tpm: (
     <>
       <Was label="technical product management" />
-      <T text=" (I hope to try it in an enterprise environment, soon)" />
+      <T text=" (the role where shipping means aligning people, not just code; I want to run that play at enterprise scale)" />
     </>
   ),
   insight: (
@@ -139,19 +144,19 @@ export const EXP: Record<string, ReactNode> = {
   beli: (
     <>
       <Was label="Beli for Spotify" ic="music" />
-      <T text=" (Beli, but for what you listen to)" />
+      <T text=" (log and rank everything you listen to, trade taste with friends, and watch your real top 100 emerge; your ranking, not the algorithm's)" />
     </>
   ),
   road: (
     <>
       <Was label="a road trip app" ic="car" />
-      <T text=" (more soon)" />
+      <T text=" (the stops, the route, and the drive itself in one place; more soon)" />
     </>
   ),
   wear: (
     <>
       <Was label="fitness wearables" ic="watch" />
-      <T text=": the next generation of them, in a new form factor" />
+      <T text=": the next generation of recovery tracking, in a form factor nobody has shipped yet" />
     </>
   ),
   experiments: (
@@ -168,19 +173,19 @@ export const EXP: Record<string, ReactNode> = {
   boulder: (
     <>
       <Was label="a bouldering AI" ic="mountain" />
-      <T text=" that finds the optimal path up the wall for you, specifically" />
+      <T text=" that reads the wall and plans your beta: the optimal path for your height and reach, not the average climber's" />
     </>
   ),
   argue: (
     <>
       <Was label="an agent that argues with you" ic="chat" />
-      <T text=" to help you learn; disagreement is the feature" />
+      <T text=" to help you learn; disagreement is the feature, not the bug" />
     </>
   ),
   habit: (
     <>
       <Was label="a bad-habit breaker" ic="zap" />
-      <T text=" that runs in real time, powered by Meta’s dev tools" />
+      <T text=" that catches the habit the moment it starts (built on Meta’s dev tools), not in a report the next morning" />
     </>
   ),
   deanza: (
@@ -193,7 +198,7 @@ export const EXP: Record<string, ReactNode> = {
   degrees: (
     <>
       <Was label="five associate degrees" ic="layers" />
-      <T text=": Statistics, Economics, Business Administration, Accounting, and Applied Math" />
+      <T text=": Statistics, Economics, Business Administration, Accounting, and Applied Math (the breadth was the point)" />
     </>
   ),
   berkeley: (
@@ -221,10 +226,17 @@ export const EXP: Record<string, ReactNode> = {
       <Was label="email" ic="mail" />
       <T text=": " />
       <A text="nikunjmore12@gmail.com" href="mailto:nikunjmore12@gmail.com" />
-      <T text=" or " />
+      <T text=" (personal) or " />
       <A text="nikunj.more@berkeley.edu" href="mailto:nikunj.more@berkeley.edu" />
-      <T text=", or by phone at " />
+      <T text=" (school); I read both daily" />
+    </>
+  ),
+  phone: (
+    <>
+      <Was label="phone" ic="phone" />
+      <T text=": " />
       <A text="(650) 880-9285" href="tel:+16508809285" />
+      <T text=" (call or text; text gets the faster reply)" />
     </>
   ),
 };

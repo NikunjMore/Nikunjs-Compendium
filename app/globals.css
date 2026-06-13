@@ -79,11 +79,26 @@ body::before {
 main {
   position: relative;
   z-index:  1;
-  /* the portrait hugs the right edge now, so the words get to breathe */
-  max-width: 880px;
+  /* the portrait hugs the right edge now, so the words get to breathe;
+     v10.4 lets the column reach further toward the middle - the photo
+     deck keeps its own buffer (photostack GAP_LEFT) off this edge */
+  max-width: 960px;
   margin:  0;
   padding: calc(var(--r, 1.4) * 24px) 32px
            calc(var(--r, 1.4) * 12px) clamp(24px, 4vw, 48px);
+}
+
+/*
+ * The ghost: an invisible, fully-expanded twin of the prose (last child of
+ * <main>). Zero height in flow, hidden from eyes, readers and the tab
+ * order; overflow:hidden keeps it a BFC so its inner heights are real.
+ * fitRhythm measures it to reserve space before anything is clicked.
+ */
+.ghost {
+  height: 0;
+  overflow: hidden;
+  visibility: hidden;
+  pointer-events: none;
 }
 
 main.measuring,
@@ -153,9 +168,20 @@ a:hover { text-decoration-color: #ffffff; }
 .tok:focus-visible { outline: 1px solid #8a8a8a; outline-offset: 2px; }
 
 @supports selector(:has(*)) {
-  .js .tok:not(:has(.ch.on:not(.sp))) {
+  /*
+   * The box blooms only after the words finish: while ANY non-space
+   * character is still unrevealed (dots mid-flight), the token stays
+   * naked text. The words come up first; the highlight follows them in,
+   * riding the .tok background/border transition.
+   */
+  .js .tok:has(.ch:not(.on):not(.sp)) {
     background: transparent; border-color: transparent; box-shadow: none;
     animation: none;
+  }
+  /* the border beam waits for the words too */
+  .js .tok:has(.ch:not(.on):not(.sp))::before,
+  .js .tok:has(.ch:not(.on):not(.sp))::after {
+    content: none;
   }
 }
 
@@ -467,7 +493,8 @@ main.off {
 /* ---- #4: the photo deck ------------------------------------------------ */
 .pstack {
   position: fixed;
-  z-index: 4; /* beneath the dot field (5): dots keep flying over the photo */
+  z-index: 6; /* above the dot field (5): the photos read fully solid,
+                 no dots drifting across a face */
   transition: opacity 0.45s ease;
 }
 .pstack.off { opacity: 0; pointer-events: none; visibility: hidden; transition: opacity 0.45s ease, visibility 0s 0.45s; }
@@ -565,6 +592,25 @@ main.off {
   animation: shimmer 1.6s linear infinite;
 }
 @keyframes shimmer { to { background-position: -120% 0; } }
+
+/* ---- #7: the parallax light on the centred cover ------------------------ */
+/* A soft specular sheen pinned to the cursor (vars set by the rAF loop);
+   screen-blended so it lights the art instead of washing it out. The loop
+   alone decides opacity: full on the centred card, zero everywhere else. */
+.mshine {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  opacity: 0;
+  mix-blend-mode: screen;
+  background: radial-gradient(
+    58% 58% at var(--gx, 50%) var(--gy, 50%),
+    rgba(255, 255, 255, 0.30),
+    rgba(255, 255, 255, 0.08) 46%,
+    transparent 72%
+  );
+  transition: opacity 0.3s ease;
+}
 
 .minfo {
   position: absolute;
@@ -727,7 +773,7 @@ main.off {
   .minfo { bottom: 84px; }
   .mname { font-size: 17px; }
   .aweek .aday:nth-child(n+8) { display: none; }
-  .pstack { z-index: 4; }
+  .pstack { z-index: 6; }
   /* the page scrolls here: keep the footer clear of the floating dock */
   main { padding-bottom: 84px; }
 }
