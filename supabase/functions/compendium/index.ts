@@ -171,7 +171,8 @@ function asleepMs(s: any): number | null {
 function composeHealth(rec: any, cyc: any, slp: any) {
   const r0 = rec?.records?.[0] ?? null;
   const c0 = cyc?.records?.[0] ?? null;
-  const s0 = slp?.records?.[0] ?? null;
+  const s0 = (slp?.records ?? []).find((s: any) => (asleepMs(s) ?? 0) > 5 * 60 * 60 * 1000)
+    ?? slp?.records?.[0] ?? null;
   const recByCycle = new Map<unknown, any>();
   for (const r of rec?.records ?? []) recByCycle.set(r.cycle_id, r);
   const slpById = new Map<unknown, any>();
