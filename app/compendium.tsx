@@ -405,7 +405,7 @@ export default function Compendium() {
 
       <main ref={rootRef} className={onPerson ? '' : 'off'} aria-hidden={!onPerson}>
         <header>
-          <h1 data-block><T text="Nikunj's Compendium" /></h1>
+          <h1 data-block><T text="👋, I'm Nikunj More" /></h1>
         </header>
 
         {/* on small screens the portrait lives here, in flow, scaled to the screen */}
@@ -422,7 +422,7 @@ export default function Compendium() {
         */}
         <div className="ghost" aria-hidden="true">
           <div ref={ghostRef}>
-            <header><h1><T text="Nikunj's Compendium" /></h1></header>
+            <header><h1><T text="👋, I'm Nikunj More" /></h1></header>
             <Ctx.Provider value={ghostApi}>
               <Prose ghost settled />
             </Ctx.Provider>
@@ -495,7 +495,7 @@ function Prose({ ghost = false, settled }: { ghost?: boolean; settled: boolean }
       <section aria-label="Experience">
         <h2 className={hdr}>Experience</h2>
         <p {...db} data-p="experience">
-          <T text="My work has taken me through " />
+          <T text="My work took me through " />
           <Tok id="work" label="a few different worlds" />
           <T text="." />
         </p>

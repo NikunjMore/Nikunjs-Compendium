@@ -1,24 +1,11 @@
-'use client';
-
-/*
- * activitytab.tsx
- * The Whoop tab: recovery, sleep and strain pulled from the edge function
- * (which owns the OAuth tokens and caches for 15 minutes). Three large
- * figures, a quiet HRV/RHR line, and a 7-day recovery x strain strip —
- * all monotone, matching the rest of the page.
- */
+﻿'use client';
 
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { FN_BASE } from './backend';
-import { fmtDuration, fmtStrain, recoveryBand } from '../utils.js';
+import { fmtDuration, fmtStrain, healthObservation, recoveryBand } from '../utils.js';
 
-type Day = {
-  date: string;
-  recovery: number | null;
-  strain: number | null;
-  sleepMs: number | null;
-};
-
+type Day = { date: string; recovery: number | null; strain: number | null; sleepMs: number | null };
+type Metric = 'strain' | 'recovery' | 'sleep';
 type Health =
   | { connected: false; error?: string }
   | {
@@ -35,6 +22,7 @@ const STALE_MS = 10 * 60 * 1000;
 export function ActivityTab({ active }: { active: boolean }) {
   const [data, setData] = useState<Health | null>(null);
   const [err, setErr] = useState(false);
+  const [selectedMetric, setSelectedMetric] = useState<Metric | null>(null);
   const fetchedAt = useRef(0);
 
   const load = useCallback(() => {
@@ -51,12 +39,7 @@ export function ActivityTab({ active }: { active: boolean }) {
 
   let body: React.ReactNode;
   if (err) {
-    body = (
-      <div className="astate">
-        the wrist didn&rsquo;t answer.{' '}
-        <button type="button" className="linkish" onClick={load}>try again</button>
-      </div>
-    );
+    body = <div className="astate">the wrist didn&rsquo;t answer.{' '}<button type="button" className="linkish" onClick={load}>try again</button></div>;
   } else if (!data) {
     body = <div className="astate dim">syncing with the wrist&hellip;</div>;
   } else if (!data.connected) {
@@ -65,67 +48,79 @@ export function ActivityTab({ active }: { active: boolean }) {
         <p>Whoop isn&rsquo;t wired up yet.</p>
         <p className="dim asmall">
           (Nikunj: register the redirect URI, then{' '}
-          <a href={`${FN_BASE}/login`} target="_blank" rel="noopener noreferrer">
-            authorize once
-          </a>
-          . Details in SETUP-WHOOP.md.)
+          <a href={`${FN_BASE}/login`} target="_blank" rel="noopener noreferrer">authorize once</a>.
+          Details in SETUP-WHOOP.md.)
         </p>
       </div>
     );
   } else {
     const r = data.recovery;
+    const recovery = r.score ?? 0;
+    const strain = data.strain.day ?? 0;
+    const sleepPerformance = data.sleep.perf ?? 0;
+    const band = recoveryBand(r.score ?? NaN);
+    const observation = healthObservation(data.week);
     const minutes = Math.max(0, Math.round((Date.now() - new Date(data.fetchedAt).getTime()) / 60000));
+
     body = (
       <>
-        <div className="astats">
-          <div className="astat">
-            <div className="abig">{r.score != null ? `${Math.round(r.score)}%` : '–'}</div>
-            <div className="alab">recovery · {recoveryBand(r.score ?? NaN)}</div>
-          </div>
-          <div className="astat">
-            <div className="abig">{fmtDuration(data.sleep.durMs ?? 0)}</div>
-            <div className="alab">
-              sleep{data.sleep.perf != null ? ` · ${Math.round(data.sleep.perf)}% of need` : ''}
-            </div>
-          </div>
-          <div className="astat">
-            <div className="abig">{fmtStrain(data.strain.day ?? NaN)}</div>
-            <div className="alab">day strain · of 21</div>
-          </div>
+        <header className="aheading">
+          <div className="aeyebrow">whoop · live</div>
+          <h2>How I recover</h2>
+          <p className="asummary">Today, at a glance. Tap a circle for the detail behind it.</p>
+        </header>
+
+        <div className="awhoop-rings" role="group" aria-label="Today’s WHOOP metrics">
+          <MetricRing
+            label="strain"
+            value={fmtStrain(strain)}
+            progress={(strain / 21) * 100}
+            tone="strain"
+            active={selectedMetric === 'strain'}
+            onClick={() => setSelectedMetric(selectedMetric === 'strain' ? null : 'strain')}
+          />
+          <MetricRing
+            label="recovery"
+            value={r.score != null ? `${Math.round(recovery)}%` : '–'}
+            progress={recovery}
+            tone={`recovery ${band}`}
+            active={selectedMetric === 'recovery'}
+            onClick={() => setSelectedMetric(selectedMetric === 'recovery' ? null : 'recovery')}
+          />
+          <MetricRing
+            label="sleep"
+            value={data.sleep.perf != null ? `${Math.round(sleepPerformance)}%` : '–'}
+            progress={sleepPerformance}
+            tone="sleep"
+            active={selectedMetric === 'sleep'}
+            onClick={() => setSelectedMetric(selectedMetric === 'sleep' ? null : 'sleep')}
+          />
         </div>
 
-        <div className="avitals">
-          {r.hrv != null && <span>{Math.round(r.hrv)} ms hrv</span>}
-          {r.hrv != null && r.rhr != null && <span className="msep">·</span>}
-          {r.rhr != null && <span>{Math.round(r.rhr)} bpm resting</span>}
+        <div className="ametric-detail" aria-live="polite">
+          {selectedMetric === 'strain' && (
+            <p><strong>{fmtStrain(strain)}</strong> of 21 strain so far today.</p>
+          )}
+          {selectedMetric === 'recovery' && (
+            <p>
+              <strong>{band} recovery</strong>
+              {r.hrv != null && ` · ${Math.round(r.hrv)} ms HRV`}
+              {r.rhr != null && ` · ${Math.round(r.rhr)} bpm resting`}
+            </p>
+          )}
+          {selectedMetric === 'sleep' && (
+            <p>
+              <strong>{fmtDuration(data.sleep.durMs ?? 0)}</strong> asleep
+              {data.sleep.perf != null && ` · ${Math.round(data.sleep.perf)}% of need`}
+            </p>
+          )}
+          {selectedMetric == null && <p className="dim">strain · recovery · sleep</p>}
         </div>
 
-        {data.week.length > 1 && (
-          <div className="aweek" aria-label="Last seven days">
-            {[...data.week].reverse().map((d) => (
-              <div className="aday" key={d.date} title={
-                `${d.date} · recovery ${d.recovery ?? '–'}%` +
-                ` · strain ${d.strain != null ? fmtStrain(d.strain) : '–'}` +
-                (d.sleepMs ? ` · slept ${fmtDuration(d.sleepMs)}` : '')
-              }>
-                <div className="abars">
-                  <div
-                    className="abar rec"
-                    style={{ height: `${Math.max(4, d.recovery ?? 0)}%` }}
-                  />
-                  <div
-                    className="abar str"
-                    style={{ height: `${Math.max(4, ((d.strain ?? 0) / 21) * 100)}%` }}
-                  />
-                </div>
-                <div className="adlab">
-                  {new Date(`${d.date}T12:00:00`).toLocaleDateString('en-US', { weekday: 'narrow' })}
-                </div>
-              </div>
-            ))}
-          </div>
-        )}
-
+        <div className="aobservation">
+          <span>what stands out</span>
+          <p>{observation || 'Not enough scored days yet to call out a pattern.'}</p>
+        </div>
         <div className="asynced dim">whoop · synced {minutes < 1 ? 'just now' : `${minutes}m ago`}</div>
       </>
     );
@@ -135,5 +130,41 @@ export function ActivityTab({ active }: { active: boolean }) {
     <div className={`activity${active ? '' : ' off'}`} aria-label="Recovery and strain">
       <div className="awrap">{body}</div>
     </div>
+  );
+}
+
+function MetricRing({ label, value, progress, tone, active, onClick }: {
+  label: string;
+  value: string;
+  progress: number;
+  tone: string;
+  active: boolean;
+  onClick: () => void;
+}) {
+  const filled = Math.max(0, Math.min(100, progress));
+  return (
+    <button
+      type="button"
+      className={`aring ${tone}${active ? ' active' : ''}`}
+      aria-label={`${label}: ${value}`}
+      aria-pressed={active}
+      onClick={onClick}
+    >
+      <svg viewBox="0 0 120 120" aria-hidden="true">
+        <circle className="aring-track" cx="60" cy="60" r="52" pathLength="100" />
+        <circle
+          className="aring-value"
+          cx="60"
+          cy="60"
+          r="52"
+          pathLength="100"
+          strokeDasharray={`${filled} 100`}
+        />
+      </svg>
+      <span className="aring-copy">
+        <strong>{value}</strong>
+        <span>{label}</span>
+      </span>
+    </button>
   );
 }

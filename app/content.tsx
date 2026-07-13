@@ -151,19 +151,19 @@ export const EXP: Record<string, ReactNode> = {
   trees: (
     <>
       <Was id="trees" label="Three Big Trees" ic="branch" />
-      <T text=", where I run operations and built a WhatsApp-based order system that cut our usual turnaround from three or four days to one" />
+      <T text=", where I ran operations and built a WhatsApp-based order system that cut our usual turnaround from three or four days to one" />
     </>
   ),
   dasg: (
     <>
       <Was id="dasg" label="De Anza Student Government" ic="cap" />
-      <T text=", where I help manage a $1M+ budget and got a proposal through the Board of Trustees that should bring in about $160K a year" />
+      <T text=", where I helped manage a $1M+ budget and got a proposal through the Board of Trustees projected to bring in about $160K a year" />
     </>
   ),
   peerprep: (
     <>
       <Was id="peerprep" label="PeerPrep" ic="people" />
-      <T text=", a tutoring group I co-founded that has worked with more than 175 families. We use AI for parent updates, but the teaching stays human" />
+      <T text=", a tutoring group I co-founded that worked with more than 175 families. We used AI for parent updates, but the teaching stayed human" />
     </>
   ),
   insight: (

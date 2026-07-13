@@ -469,6 +469,18 @@ export function fmtStrain(x) {
   return (Math.round(clamp(x, 0, 21) * 10) / 10).toFixed(1);
 }
 
+
+/* A small, factual summary of the visible recovery window. */
+export function healthObservation(days) {
+  const scored = days.filter((d) => Number.isFinite(d?.recovery));
+  if (!scored.length) return '';
+  const average = Math.round(scored.reduce((sum, d) => sum + d.recovery, 0) / scored.length);
+  const best = scored.reduce((top, d) => d.recovery > top.recovery ? d : top);
+  const sleep = Number.isFinite(best.sleepMs) && best.sleepMs > 0
+    ? `, with ${fmtDuration(best.sleepMs)} of sleep`
+    : '';
+  return `Across ${scored.length} scored ${scored.length === 1 ? 'day' : 'days'}, recovery averaged ${average}%. Best: ${Math.round(best.recovery)}%${sleep}.`;
+}
 /* ---------------- centred-cover parallax (music tab, video ref #7) ------- */
 
 /*

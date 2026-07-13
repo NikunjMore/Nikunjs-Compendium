@@ -8,17 +8,18 @@ const inter = Inter({ subsets: ['latin'], display: 'swap' });
 
 export const metadata: Metadata = {
   metadataBase: new URL('https://www.nikunjmore.com'),
-  title: 'Nikunj’s Compendium',
+  title: '👋, I\'m Nikunj More',
   description:
     'I like building things, especially with ambitious people. Projects, school, and miscellany from Nikunj More. Click the grey boxes.',
   openGraph: {
-    title: 'Nikunj’s Compendium',
+    title: '👋, I\'m Nikunj More',
     description:
       'I like building things, especially with ambitious people. Click the grey boxes.',
     url: 'https://www.nikunjmore.com',
     type: 'website',
   },
   twitter: { card: 'summary_large_image' },
+  icons: { icon: [{ url: '/lotus-logo.webp', type: 'image/webp' }] },
   alternates: { canonical: '/' },
 };
 
@@ -28,7 +29,7 @@ export const viewport: Viewport = {
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
-    <html lang="en" className={inter.className}>
+    <html lang="en" className={inter.className} suppressHydrationWarning>
       <body>
         {/* Flag JS before paint so prose stays hidden until the dots build it.
             Without JS the class never lands and the full text is visible. */}

@@ -1,17 +1,17 @@
-/*
+﻿/*
  * globals.css  v4
  * Monotone: blacks, greys, whites.  Grey boxes mark clickable tokens.
  * The portrait lives right of the 790 px column on desktop; on small
  * screens it fills the in-flow #photo-slot instead. photo.ts mirrors this.
  *
  * Layout goals
- * ────────────
- * • Fully-expanded page fits one screen on laptop/desktop — no scroll.
+ * â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+ * â€¢ Fully-expanded page fits one screen on laptop/desktop â€” no scroll.
  *   Two knobs, both solved by React per state/viewport:
- *     --r   rhythm  [0.62 – 3.6]  inter-section breathing room
- *     --fs  type    [0.74 – 1]    last-resort font scale when --r bottoms out
- * • Portrait scales with the viewport in both modes.
- * • Mobile (<700 px wide, or short-and-narrow) scrolls freely and shows
+ *     --r   rhythm  [0.62 â€“ 3.6]  inter-section breathing room
+ *     --fs  type    [0.74 â€“ 1]    last-resort font scale when --r bottoms out
+ * â€¢ Portrait scales with the viewport in both modes.
+ * â€¢ Mobile (<700 px wide, or short-and-narrow) scrolls freely and shows
  *   the portrait inline at the top, scaled to the screen.
  */
 
@@ -277,7 +277,7 @@ footer a:hover { color: #ffffff; }
 }
 
 /* ---- medium screens: base-size tier 2 ---------------------------------- */
-/* 1366×768 laptops, medium MacBooks */
+/* 1366Ã—768 laptops, medium MacBooks */
 @media (max-height: 860px) and (min-width: 700px) {
   :root { --base: 15.5px; --lh: 1.6; }
   h1    { font-size: calc(var(--fs, 1) * clamp(26px, 4.2vh, 34px)); }
@@ -330,7 +330,7 @@ footer a:hover { color: #ffffff; }
 }
 
 /* ======================================================================
-   v10 — tabs, dock, border beam, photo deck, cover flow, recovery board
+   v10 â€” tabs, dock, border beam, photo deck, cover flow, recovery board
    ====================================================================== */
 
 /* ---- tab layers: fade beneath the ever-running dot field --------------- */
@@ -708,66 +708,116 @@ main.off {
   place-items: center;
   transition: opacity 0.45s ease;
 }
-.activity.off { opacity: 0; pointer-events: none; visibility: hidden; transition: opacity 0.45s ease, visibility 0s 0.45s; }
-
-.awrap { text-align: center; padding: 0 24px; max-width: 760px; width: 100%; }
-
-.astats {
-  display: flex;
-  justify-content: center;
-  gap: clamp(28px, 6vw, 72px);
-  flex-wrap: wrap;
+.activity.off {
+  opacity: 0;
+  pointer-events: none;
+  visibility: hidden;
+  transition: opacity 0.45s ease, visibility 0s 0.45s;
 }
-.abig {
-  font-size: clamp(34px, 6.2vh, 54px);
-  font-weight: 700;
-  letter-spacing: -0.02em;
-  color: #ffffff;
-  line-height: 1.1;
+
+body:has(.activity:not(.off)) { overflow: hidden; }
+.awrap { padding: 0 24px 46px; max-width: 900px; width: 100%; }
+.aheading { max-width: 650px; margin: 0 auto; text-align: center; }
+.aeyebrow,
+.aobservation > span {
+  font-family: var(--mono);
+  text-transform: lowercase;
+  letter-spacing: 0.1em;
+  color: var(--faint);
 }
-.alab {
-  margin-top: 6px;
+.aeyebrow { font-size: 10.5px; }
+.aheading h2 {
+  margin: 8px 0 0;
+  font-size: clamp(30px, 5.2vh, 48px);
+  line-height: 1;
+  letter-spacing: -0.035em;
+}
+.asummary { margin: 14px auto 0; color: var(--dim); font-size: 15px; line-height: 1.55; }
+.asummary strong { color: var(--fg); font-weight: 600; }
+
+.awhoop-rings {
+  max-width: 650px;
+  margin: clamp(24px, 5vh, 42px) auto 0;
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: clamp(12px, 3vw, 36px);
+}
+.aring {
+  position: relative;
+  width: 100%;
+  max-width: 180px;
+  aspect-ratio: 1;
+  margin: 0 auto;
+  padding: 0;
+  border: 0;
+  border-radius: 50%;
+  color: #8a8a8a;
+  background: transparent;
+  cursor: pointer;
+  touch-action: manipulation;
+}
+.aring svg { display: block; width: 100%; height: 100%; overflow: visible; }
+.aring circle { fill: none; stroke-width: 7; }
+.aring-track { stroke: #272727; }
+.aring-value {
+  stroke: currentColor;
+  stroke-linecap: round;
+  transform: rotate(-90deg);
+  transform-origin: 50% 50%;
+  transition: stroke-dasharray 0.55s var(--spring), filter 0.2s ease;
+}
+.aring.strain { color: #00a9e0; }
+.aring.sleep { color: #6bb7ff; }
+.aring.recovery.high { color: #16ec06; }
+.aring.recovery.moderate { color: #ffd400; }
+.aring.recovery.low { color: #ff3b30; }
+.aring:hover .aring-value,
+.aring.active .aring-value { filter: drop-shadow(0 0 6px currentColor); }
+.aring:focus-visible { outline: 2px solid #fff; outline-offset: 4px; }
+.aring-copy {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-content: center;
+  text-align: center;
+  line-height: 1;
+}
+.aring-copy strong {
+  color: var(--fg);
+  font-size: clamp(23px, 4vw, 36px);
+  font-weight: 650;
+  letter-spacing: -0.035em;
+}
+.aring-copy span {
+  margin-top: 8px;
+  color: var(--dim);
+  font-family: var(--mono);
+  font-size: 9.5px;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+}
+
+.ametric-detail {
+  min-height: 54px;
+  display: grid;
+  place-items: center;
+  max-width: 650px;
+  margin: 10px auto 0;
+  text-align: center;
   font-family: var(--mono);
   font-size: 11.5px;
-  letter-spacing: 0.08em;
   color: var(--dim);
 }
-.avitals {
-  margin-top: 26px;
-  color: var(--faint);
-  font-family: var(--mono);
-  font-size: 12.5px;
-  letter-spacing: 0.06em;
-}
+.ametric-detail p { margin: 0; }
+.ametric-detail strong { color: var(--fg); font-weight: 600; }
 
-.aweek {
-  margin: 34px auto 0;
-  display: flex;
-  justify-content: center;
-  align-items: flex-end;
-  gap: clamp(10px, 2.4vw, 26px);
-}
-.aday { width: 30px; }
-.abars {
-  height: 74px;
-  display: flex;
-  align-items: flex-end;
-  justify-content: center;
-  gap: 4px;
-}
-.abar { width: 7px; border-radius: 3px 3px 1px 1px; transition: height 0.6s var(--spring); }
-.abar.rec { background: #e8e8e8; }
-.abar.str { background: #565656; }
-.adlab {
-  margin-top: 7px;
-  font-family: var(--mono);
-  font-size: 10.5px;
-  color: var(--faint);
-  text-align: center;
-}
+.aobservation { max-width: 650px; margin: 2px auto 0; text-align: center; }
+.aobservation > span { font-size: 9.5px; }
+.aobservation p { margin: 5px 0 0; font-size: 13.5px; color: var(--dim); }
 
 .asynced {
-  margin-top: 30px;
+  margin-top: 12px;
+  text-align: center;
   font-family: var(--mono);
   font-size: 11px;
   letter-spacing: 0.08em;
@@ -783,7 +833,10 @@ main.off {
   .dock button { width: 38px; height: 38px; }
   .minfo { bottom: 84px; }
   .mname { font-size: 17px; }
-  .aweek .aday:nth-child(n+8) { display: none; }
+  .awrap { padding-inline: 16px; }
+  .awhoop-rings { gap: 4px; }
+  .aring circle { stroke-width: 8; }
+  .aring-copy strong { font-size: clamp(20px, 7vw, 27px); }
   .pstack { z-index: 6; }
   /* the page scrolls here: keep the footer clear of the floating dock */
   main { padding-bottom: 84px; }
@@ -797,5 +850,5 @@ main.off {
 @media (prefers-reduced-motion: reduce) {
   .dock, .dock button, .dtip, .pcard, .minfo { transition: none; animation: none; }
   .tok.beam::after { animation: none; }
-  .abar { transition: none; }
+  .aring-value { transition: none; }
 }
