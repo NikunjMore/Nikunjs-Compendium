@@ -214,7 +214,7 @@ test('refillWindow scales with the bite and never breaks the 20 s budget', () =>
 import {
   lerpExp, coverTransform, wrapDelta, normalizeWheel, wheelSteps, timeAgo, centerIndex, nearestCover, dockMagnify,
   stackPose, dragPromote, flingOutcome, exciteTarget, pickImage, uniqueTracks,
-  normalizeRecent, fmtDuration, recoveryBand, fmtStrain,
+  normalizeRecent, fmtDuration, recoveryBand, fmtStrain, healthObservation,
 } from './utils.js';
 
 test('lerpExp converges and is frame-rate independent', () => {
@@ -474,6 +474,19 @@ test('fmtStrain clamps to 0-21 with one decimal', () => {
   assert.equal(fmtStrain(NaN), '0.0');
 });
 
+
+test('healthObservation summarizes only scored recovery days', () => {
+  const days = [
+    { recovery: 72, sleepMs: 7 * 3600000 },
+    { recovery: null, sleepMs: null },
+    { recovery: 88, sleepMs: 8 * 3600000 + 30 * 60000 },
+  ];
+  assert.equal(
+    healthObservation(days),
+    'Across 2 scored days, recovery averaged 80%. Best: 88%, with 8h 30m of sleep.',
+  );
+  assert.equal(healthObservation([{ recovery: null }]), '');
+});
 /* ================= v10.4: centred-cover parallax ================= */
 
 import { cardTilt, glarePos, centerCloseness } from './utils.js';
