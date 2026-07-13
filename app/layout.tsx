@@ -8,11 +8,11 @@ const inter = Inter({ subsets: ['latin'], display: 'swap' });
 
 export const metadata: Metadata = {
   metadataBase: new URL('https://www.nikunjmore.com'),
-  title: '👋, I\'m Nikunj More',
+  title: ', I\'m Nikunj More',
   description:
     'I like building things, especially with ambitious people. Projects, school, and miscellany from Nikunj More. Click the grey boxes.',
   openGraph: {
-    title: '👋, I\'m Nikunj More',
+    title: ', I\'m Nikunj More',
     description:
       'I like building things, especially with ambitious people. Click the grey boxes.',
     url: 'https://www.nikunjmore.com',
