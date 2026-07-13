@@ -9,7 +9,17 @@ import {
   clamp, lerp, dist2, easeOutCubic, mulberry32, hash2, vnoise2, curl2,
   springStep, buildSchedule, strideForBudget, poolCount, bestCandidate,
   nearestK, formatClicks, waveField, refillWindow,
+  collapseBranch,
 } from './utils.js';
+
+
+test('collapseBranch closes one disclosure branch without touching siblings', () => {
+  const parents = { adiom: 'work', dictation: 'insight', voice: 'dictation' };
+  assert.deepEqual(
+    [...collapseBranch(new Set(['work', 'adiom', 'insight', 'dictation', 'voice']), 'insight', parents)],
+    ['work', 'adiom'],
+  );
+});
 
 test('clamp pins values to the range', () => {
   assert.equal(clamp(5, 0, 10), 5);

@@ -9,6 +9,17 @@ export const clamp = (v, lo, hi) => Math.min(hi, Math.max(lo, v));
 
 export const lerp = (a, b, t) => a + (b - a) * t;
 
+/* Remove a disclosure and every open child below it. */
+export function collapseBranch(open, root, parents) {
+  const kept = new Set();
+  for (const id of open) {
+    let cursor = id;
+    while (cursor && cursor !== root) cursor = parents[cursor];
+    if (cursor !== root) kept.add(id);
+  }
+  return kept;
+}
+
 export const dist2 = (ax, ay, bx, by) => {
   const dx = ax - bx;
   const dy = ay - by;
