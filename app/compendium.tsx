@@ -13,13 +13,13 @@ import {
   useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState,
 } from 'react';
 import { getEngine, type DotEngine } from './engine';
-import { Ctx, T, Tok, type CompendiumApi } from './content';
+import { Ctx, PARENT, T, Tok, type CompendiumApi } from './content';
 import { Ic } from './icons';
 import { Dock, type TabId } from './dock';
 import { PhotoStack } from './photostack';
 import { MusicTab } from './musictab';
 import { ActivityTab } from './activitytab';
-import { formatClicks } from '../utils.js';
+import { collapseBranch, formatClicks } from '../utils.js';
 
 const CKEY = 'nc.clicks';
 
@@ -324,6 +324,11 @@ export default function Compendium() {
       bump();
       setOpen((prev) => new Set(prev).add(id));
     },
+    collapse: (id) => {
+      flipSnapshot();
+      bump();
+      setOpen((prev) => collapseBranch(prev, id, PARENT));
+    },
     assembleNode: (el) => {
       /* drain the field radially around the box that was clicked */
       const r = el.getBoundingClientRect();
@@ -343,6 +348,7 @@ export default function Compendium() {
   const ghostApi = useMemo<CompendiumApi>(() => ({
     isOpen: () => true,
     expand: () => {},
+    collapse: () => {},
     assembleNode: () => {},
   }), []);
 
@@ -480,8 +486,8 @@ function Prose({ ghost = false, settled }: { ghost?: boolean; settled: boolean }
         <p {...db} data-p="about">
           <T text="I like building things, especially with " />
           <Tok id="ambitious" label="ambitious people" />
-          <T text=". I'm navigating the world " />
-          <Tok id="oneproject" label="one project at a time" />
+          <T text=". Lately, I've been drawn to " />
+          <Tok id="aipm" label="AI product management" />
           <T text="." />
         </p>
       </section>
@@ -489,8 +495,8 @@ function Prose({ ghost = false, settled }: { ghost?: boolean; settled: boolean }
       <section aria-label="Experience">
         <h2 className={hdr}>Experience</h2>
         <p {...db} data-p="experience">
-          <T text="Currently building " />
-          <Tok id="insight" label="The Insight Company of California" />
+          <T text="My work has taken me through " />
+          <Tok id="work" label="a few different worlds" />
           <T text="." />
         </p>
       </section>
@@ -498,8 +504,8 @@ function Prose({ ghost = false, settled }: { ghost?: boolean; settled: boolean }
       <section aria-label="Projects">
         <h2 className={hdr}>Projects</h2>
         <p {...db} data-p="projects">
-          <T text="After hours, I'm running " />
-          <Tok id="experiments" label="three experiments" />
+          <T text="My main project is " />
+          <Tok id="insight" label="The Insight Company of California" />
           <T text="." />
         </p>
       </section>
@@ -509,7 +515,7 @@ function Prose({ ghost = false, settled }: { ghost?: boolean; settled: boolean }
         <p {...db} data-p="school">
           <T text="I studied at " />
           <Tok id="deanza" label="De Anza College" />
-          <T text=", and now I'm headed to " />
+          <T text=", and now I'm at " />
           <Tok id="berkeley" label="UC Berkeley" />
           <T text="." />
         </p>
@@ -518,9 +524,9 @@ function Prose({ ghost = false, settled }: { ghost?: boolean; settled: boolean }
       <section aria-label="Misc">
         <h2 className={hdr}>Misc</h2>
         <p {...db} data-p="misc">
-          <T text="I think there is not enough " />
-          <Tok id="orders" label="second and third order thinking" />
-          <T text=". I love getting " />
+          <T text="I'm getting up to speed on " />
+          <Tok id="jepa" label="JEPA architectures" />
+          <T text=". I also love getting " />
           <Tok id="d3" label="Vitamin D₃" />
           <T text="." />
         </p>

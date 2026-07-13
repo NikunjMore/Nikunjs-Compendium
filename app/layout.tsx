@@ -7,7 +7,7 @@ import './globals.css';
 const inter = Inter({ subsets: ['latin'], display: 'swap' });
 
 export const metadata: Metadata = {
-  metadataBase: new URL('https://nikunjs-compendium.vercel.app'),
+  metadataBase: new URL('https://www.nikunjmore.com'),
   title: 'Nikunj’s Compendium',
   description:
     'I like building things, especially with ambitious people. Projects, school, and miscellany from Nikunj More. Click the grey boxes.',
@@ -15,7 +15,7 @@ export const metadata: Metadata = {
     title: 'Nikunj’s Compendium',
     description:
       'I like building things, especially with ambitious people. Click the grey boxes.',
-    url: 'https://nikunjs-compendium.vercel.app',
+    url: 'https://www.nikunjmore.com',
     type: 'website',
   },
   twitter: { card: 'summary_large_image' },
@@ -39,30 +39,21 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
         <noscript>
           <div className="noscript">
             The interactive bits need JavaScript. The full text: I like
-            building things, especially with ambitious people (currently: Arya
-            Somu). I’m navigating the world one project at a time; technical
-            product management seems to be on my horizon, the role where
-            shipping means aligning people, not just code, ideally at
-            enterprise scale. Currently building The Insight Company of
-            California: useful insights for the human race, with endeavors
-            like Beli for Spotify (log and rank everything you listen to,
-            trade taste with friends), a road trip app (the stops, the route,
-            and the drive itself in one place), and the next generation of
-            recovery tracking in a form factor nobody has shipped yet. After
-            hours: a bouldering AI that reads the wall and plans the optimal
-            path for your height and reach, an agent that argues with you to
-            help you learn (disagreement is the feature), and a bad-habit
-            breaker that catches the habit the moment it starts, built on
-            Meta’s dev tools. School: De Anza College (2024 to 2026, five
-            associate degrees: Statistics, Economics, Business Administration,
-            Accounting, Applied Math), transferring to UC Berkeley for
-            Business Administration, Data Science, and Applied Math. Misc: not
-            enough second and third order thinking in the world, so I made a
-            program to help you with yours; vitamin D3, bouldering,
-            pickleball, random endeavors with friends. Oh, and Coke Zero.
-            Find me in the Bay Area, on LinkedIn (linkedin.com/in/nikunj-more),
-            via email (nikunjmore12@gmail.com / nikunj.more@berkeley.edu), or
-            by phone at (650) 880-9285, call or text.
+            building things, especially with ambitious people, the kind who
+            make you think bigger and then actually build with you. Lately,
+            I&apos;ve been drawn to AI product management. My work has taken me
+            through Adiom, Three Big Trees, De Anza Student Government, and
+            PeerPrep. My main project is The Insight Company of California, a
+            suite of private productivity tools that runs locally and keeps
+            your information on your own computer. The first is a dictation
+            app built around owning your voice and picking up where you left
+            off. I studied at De Anza College and now study Business
+            Administration and Statistics at UC Berkeley, with a minor in
+            EECS. I&apos;m getting up to speed on JEPA architectures. I also
+            like Vitamin D3, bouldering, pickleball, random endeavors with
+            friends, and Coke Zero. Find me in the Bay Area, on LinkedIn, via
+            email at nikunjmore12@gmail.com or nikunj.more@berkeley.edu, or by
+            phone at (650) 880-9285.
           </div>
         </noscript>
       </body>

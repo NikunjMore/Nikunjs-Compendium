@@ -195,6 +195,17 @@ a:hover { text-decoration-color: #ffffff; }
 
 .was { color: var(--dim); }
 .was .ic { color: #cfcfcf; }
+.was.collapse {
+  display: inline;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--dim);
+  font: inherit;
+  cursor: pointer;
+}
+.was.collapse:hover { color: #cfcfcf; }
+.was.collapse:focus-visible { outline: 1px solid #8a8a8a; outline-offset: 2px; }
 
 .ic {
   width:   1.02em; height: 1.02em;
