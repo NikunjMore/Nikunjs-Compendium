@@ -1,5 +1,4 @@
 import Corridor from './corridor';
-import Fizz from './fizz';
 import Reveal from './reveal';
 
 /* Letters are split so each one can hop on hover. */
@@ -7,9 +6,7 @@ function Word({ text }: { text: string }) {
   return (
     <span className="word" aria-label={text}>
       {[...text].map((ch, i) => (
-        <span key={i} className="ltr" aria-hidden="true" style={{ ['--i' as string]: i }}>
-          {ch}
-        </span>
+        <span key={i} className="ltr" aria-hidden="true">{ch}</span>
       ))}
     </span>
   );
@@ -20,43 +17,29 @@ function Tab({ n, label }: { n: string; label: string }) {
     <div className="tab" data-reveal>
       <span>{n}</span>
       <span>{label}</span>
-      <span>/04</span>
+      <span>/03</span>
     </div>
   );
 }
 
-type Stat = {
-  to?: number; pre?: string; post?: string; shown: string;
-  what: string; where: string; wide?: boolean;
-};
+/* Count-up target: shows the final value without JavaScript. */
+function N({ to, pre = '', post = '' }: { to: number; pre?: string; post?: string }) {
+  return <span data-to={to} data-pre={pre} data-post={post}>{pre}{to}{post}</span>;
+}
 
-const STATS: Stat[] = [
-  {
-    to: 3, post: '×', shown: '3×', wide: true,
-    what: 'qualified sales conversations',
-    where: 'Adiom, PM intern. Redesigned the conversion flow and A/B tested it.',
-  },
-  {
-    to: 175, post: '+', shown: '175+',
-    what: 'families served',
-    where: 'PeerPrep, co-founder. From zero in 18 months.',
-  },
-  {
-    shown: '4→1',
-    what: 'days to fill an order',
-    where: 'My family business. AI order system built on WhatsApp.',
-  },
-  {
-    to: 160, pre: '$', post: 'K', shown: '$160K',
-    what: 'a year in new funding',
-    where: 'De Anza Student Government, budget analyst.',
-  },
-];
+function Stat({ num, what, where, wide }: { num: React.ReactNode; what: string; where: string; wide?: boolean }) {
+  return (
+    <div className={`cell stat${wide ? ' wide' : ''}`} data-reveal>
+      <p className="num">{num}</p>
+      <p className="what">{what}</p>
+      <p className="where">{where}</p>
+    </div>
+  );
+}
 
 export default function Page() {
   return (
     <>
-      <Fizz />
       <Reveal />
 
       <header className="top">
@@ -70,7 +53,7 @@ export default function Page() {
           <span className="dot" aria-hidden="true" />
           <Word text="More" />
         </h1>
-        <div className="strip">
+        <div className="strip band">
           <span>Builds AI products</span>
           <span className="ticks" aria-hidden="true" />
           <span>Open to Summer 2027 PM internships</span>
@@ -81,47 +64,47 @@ export default function Page() {
         <Corridor />
         <div className="col" id="col">
           <Tab n="01" label="About" />
-          <div className="cell about" data-reveal>
+          <div className="cell about">
             <img src="/me.jpg" alt="Nikunj More" width={112} height={140} />
-            <div>
-              <p className="lead">
-                I like building things, especially with ambitious people. Lately that means AI
-                product management: figuring out what should get built, why, and how to get it
-                into people&apos;s hands.
+            <div className="prose">
+              <p>
+                I&apos;m building The Insight Company of California, a set of private speech apps
+                that run on your own computer, so your voice never trains someone else&apos;s model.
               </p>
-              <p className="sub">
-                Business Administration and Statistics at UC Berkeley, minor in EECS.
+              <p>
+                I want to work as an AI product manager: deciding what gets built, why, and how
+                it reaches people. On the research side, I used{' '}
+                <a href="https://ai.meta.com/blog/v-jepa-yann-lecun-ai-model-video-joint-embedding-predictive-architecture/">Meta&apos;s V-JEPA</a>{' '}
+                to forecast a robotic arm&apos;s movements, and Meta AI recognized the work.
+              </p>
+              <p>
+                After high school, I spent two years at{' '}
+                <a href="https://www.deanza.edu/">De Anza College</a> and finished five associate
+                degrees. Now I study business and statistics at{' '}
+                <a href="https://haas.berkeley.edu/">UC Berkeley</a>, with a minor in EECS. Along
+                the way, I was a PM intern at <a href="https://adiom.io/">Adiom</a>, ran operations
+                for my family&apos;s business, managed budgets for{' '}
+                <a href="https://www.deanza.edu/dasg/">De Anza&apos;s student government</a>, and
+                co-founded PeerPrep, a tutoring group.
+              </p>
+              <p>
+                In my free time, I go bouldering, play pickleball, and start random projects with
+                friends, usually with a Coke Zero in hand.
               </p>
             </div>
           </div>
 
           <Tab n="02" label="Proof" />
           <div className="grid">
-            {STATS.slice(0, 3).map((s) => <StatCell key={s.shown} s={s} />)}
+            <Stat wide num={<N to={3} post={'×'} />} what="qualified sales conversations" where="Adiom" />
+            <Stat num={<N to={175} post="+" />} what="families served" where="PeerPrep" />
+            <Stat num={'4→1'} what="days to fill an order" where="Family business" />
             <div className="cell hatch" aria-hidden="true" data-reveal />
-            <StatCell s={STATS[3]} />
+            <Stat num={<N to={160} pre="$" post="K" />} what="a year in new funding" where="De Anza student government" />
           </div>
 
-          <Tab n="03" label="Building" />
-          <div className="cell build" data-reveal>
-            <p className="meta">Now &middot; Python, Go, Node.js</p>
-            <h3>The Insight Company of California</h3>
-            <p>
-              Private speech apps that run on your own computer: dictation, text-to-speech and
-              meeting notes at 98%+ accuracy. Your voice never trains anyone else&apos;s model.
-            </p>
-          </div>
-          <div className="cell build" data-reveal>
-            <p className="meta">Research &middot; PyTorch</p>
-            <h3>Latent-space world models</h3>
-            <p>
-              Built on Meta&apos;s V-JEPA. It forecasts a robotic arm&apos;s movements from
-              actuator data, and the work was recognized by Meta AI.
-            </p>
-          </div>
-
-          <Tab n="04" label="Contact" />
-          <div className="cell contact" data-reveal>
+          <Tab n="03" label="Contact" />
+          <div className="cell contact" id="contact" data-reveal>
             <a href="mailto:nikunj.more@berkeley.edu">
               <span>nikunj.more@berkeley.edu</span><i aria-hidden="true">&#8599;</i>
             </a>
@@ -131,9 +114,6 @@ export default function Page() {
             <a href="tel:+16508809285">
               <span>(650) 880-9285</span><i aria-hidden="true">&#8599;</i>
             </a>
-            <p className="meta">
-              Off the clock: bouldering, pickleball and Coke Zero. The bubbles are the Coke Zero.
-            </p>
           </div>
         </div>
       </section>
@@ -143,21 +123,5 @@ export default function Page() {
         <span>Set in Geist</span>
       </footer>
     </>
-  );
-}
-
-function StatCell({ s }: { s: Stat }) {
-  return (
-    <div className={`cell stat${s.wide ? ' wide' : ''}`} data-reveal>
-      <p className="num">
-        {s.to !== undefined ? (
-          <span data-to={s.to} data-pre={s.pre ?? ''} data-post={s.post ?? ''}>{s.shown}</span>
-        ) : (
-          s.shown
-        )}
-      </p>
-      <p className="what">{s.what}</p>
-      <p className="where">{s.where}</p>
-    </div>
   );
 }
