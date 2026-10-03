@@ -1,8 +1,8 @@
 {
   "name": "nikunjs-compendium",
-  "version": "10.4.0",
+  "version": "11.0.0",
   "private": true,
-  "description": "Nikunj's Compendium: a one-page personal site where a WebGL field of dots assembles the words.",
+  "description": "Nikunj More's personal site: one static page.",
   "type": "module",
   "scripts": {
     "dev": "next dev",
@@ -13,14 +13,12 @@
   "dependencies": {
     "next": "^15.1.6",
     "react": "^19.0.0",
-    "react-dom": "^19.0.0",
-    "three": "^0.172.0"
+    "react-dom": "^19.0.0"
   },
   "devDependencies": {
     "@types/node": "^22.10.0",
     "@types/react": "^19.0.0",
     "@types/react-dom": "^19.0.0",
-    "@types/three": "^0.172.0",
     "typescript": "^5.7.2"
   },
   "engines": {
