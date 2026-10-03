@@ -1,8 +1,8 @@
 {
   "name": "nikunjs-compendium",
-  "version": "11.0.0",
+  "version": "12.0.0",
   "private": true,
-  "description": "Nikunj More's personal site: one static page.",
+  "description": "Nikunj More's personal site: one page in a 3D room.",
   "type": "module",
   "scripts": {
     "dev": "next dev",
@@ -11,6 +11,7 @@
     "test": "node --test"
   },
   "dependencies": {
+    "geist": "^1.7.2",
     "next": "^15.1.6",
     "react": "^19.0.0",
     "react-dom": "^19.0.0"
