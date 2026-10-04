@@ -1,0 +1,549 @@
+/*
+ * Black and white, one family (Geist Sans + Geist Mono).
+ * Dark mode swaps the two; the room's lines use --ink too.
+ */
+
+@font-face {
+  font-family: 'Geist';
+  src: url('/fonts/Geist-Variable.woff2') format('woff2');
+  font-weight: 100 900;
+  font-display: swap;
+}
+@font-face {
+  font-family: 'Geist Mono';
+  src: url('/fonts/GeistMono-Variable.woff2') format('woff2');
+  font-weight: 100 900;
+  font-display: swap;
+}
+/* Geist Pixel, only for letters rolling in the name (name.ts). Nothing
+   downloads until that script asks for it. */
+@font-face { font-family: 'Geist Pixel Square';   src: url('/fonts/GeistPixel-Square.woff2') format('woff2'); font-display: block; }
+@font-face { font-family: 'Geist Pixel Grid';     src: url('/fonts/GeistPixel-Grid.woff2') format('woff2'); font-display: block; }
+@font-face { font-family: 'Geist Pixel Circle';   src: url('/fonts/GeistPixel-Circle.woff2') format('woff2'); font-display: block; }
+@font-face { font-family: 'Geist Pixel Triangle'; src: url('/fonts/GeistPixel-Triangle.woff2') format('woff2'); font-display: block; }
+@font-face { font-family: 'Geist Pixel Line';     src: url('/fonts/GeistPixel-Line.woff2') format('woff2'); font-display: block; }
+
+:root {
+  --paper: #ffffff;
+  --ink:   #000000;
+  --soft:  rgba(0, 0, 0, 0.55);
+  --gut:   20px;
+  --sans:  'Geist', ui-sans-serif, system-ui, sans-serif;
+  --mono:  'Geist Mono', ui-monospace, Menlo, monospace;
+  --pop:   cubic-bezier(0.34, 1.7, 0.5, 1);   /* overshoot, for little hops */
+  --glide: cubic-bezier(0.16, 1, 0.3, 1);
+  /* The only color on the page: milestone days in the GitHub heatmap. */
+  --haas:     #2fa45a;
+  --yc:       #ff6a13;
+  --award:    #e8b31e;
+  --deanza:   #d93a3f;
+  --berkeley: #3b7ea1;
+  color-scheme: light;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --paper: #000000;
+    --ink:   #ffffff;
+    --soft:  rgba(255, 255, 255, 0.58);
+    color-scheme: dark;
+  }
+}
+
+* { box-sizing: border-box; margin: 0; padding: 0; }
+
+body {
+  overflow-x: clip;
+  background: var(--paper);
+  color: var(--ink);
+  font-family: var(--sans);
+  font-size: 16px;
+  line-height: 1.5;
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+}
+
+a { color: inherit; text-decoration: none; }
+a:focus-visible { outline: 2px solid var(--ink); outline-offset: 3px; }
+::selection { background: var(--ink); color: var(--paper); }
+
+.sr {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+
+/* ---------- header ---------- */
+
+.top { padding: var(--gut) var(--gut) 0; }
+
+.strip {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  font-family: var(--mono);
+  font-size: 11px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+.ticks {
+  flex: 1;
+  height: 7px;
+  min-width: 24px;
+  background: repeating-linear-gradient(to right, var(--ink) 0 1px, transparent 1px 6px);
+  opacity: 0.5;
+}
+
+/* The banner under the name: ruled top and bottom, ticks only. It keeps the
+   height of a line of strip text. Its bottom rule is the top edge of the room. */
+.band {
+  min-height: calc(11px * 1.5 + 20px);
+  padding: 9px 0;
+  border-top: 1px solid var(--ink);
+  border-bottom: 1px solid var(--ink);
+}
+
+.name {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin: 2vw 0 1.6vw;
+  font-size: calc((100vw - 2 * var(--gut)) * 0.152);
+  font-weight: 800;
+  line-height: 0.8;
+  letter-spacing: -0.065em;
+  text-transform: uppercase;
+}
+.word { display: inline-flex; }
+
+/* Each letter is a slot. The tracking lives in a negative margin (not
+   letter-spacing) so the slot holds the whole glyph and nothing is shaved
+   off while name.ts rolls a letter through it. */
+.ltr {
+  position: relative;
+  display: inline-block;
+  margin-right: -0.065em;
+  letter-spacing: 0;
+  transition: transform 520ms var(--pop);
+}
+.ltr:hover { transform: translateY(-0.07em) rotate(-3deg); transition-duration: 160ms; }
+.ltr.rolling { clip-path: inset(-0.02em 0); }
+.base { display: inline-block; }
+
+/* A letter in a display font, laid over the slot. Its own line-height is 0
+   so it sits on Geist's baseline. */
+.face {
+  position: absolute;
+  inset: 0;
+  text-align: center;
+  white-space: nowrap;
+  pointer-events: none;
+}
+.face > span { line-height: 0; font-synthesis: none; }
+
+.dot {
+  flex: none;
+  width: 0.11em;
+  height: 0.11em;
+  background: var(--ink);
+  margin: 0 0.05em;
+}
+
+/* ---------- the room ----------
+   The section is the room's front opening, framed by the banner above,
+   rules on the sides and bottom. The box is the back wall. room.ts draws
+   the lines between them and sets --drift, which slides the box down
+   through the room as the page scrolls. */
+
+.room {
+  position: relative;
+  margin: 0 var(--gut);
+  padding: 15rem 0;
+  overflow: hidden;
+  border: 1px solid var(--ink);
+  border-top: 0;
+}
+
+.lines {
+  position: absolute;
+  top: 0;
+  left: 0;
+  z-index: 1;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+}
+.lines path {
+  fill: none;
+  stroke: var(--ink);
+  stroke-width: 1px;
+}
+
+.box {
+  position: relative;
+  z-index: 2;
+  width: min(620px, calc(100% - 64px));
+  margin: 0 auto;
+  background: var(--paper);
+  border: 1px solid var(--ink);
+  transform: translate3d(0, var(--drift, 0px), 0);
+  will-change: transform;
+}
+
+.tab {
+  display: grid;
+  grid-template-columns: 1fr auto 1fr;
+  align-items: center;
+  height: 26px;
+  padding: 0 10px;
+  background: var(--ink);
+  color: var(--paper);
+  font-family: var(--mono);
+  font-size: 11px;
+  font-weight: 500;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+}
+.tab span:last-child { text-align: right; opacity: 0.55; }
+
+.cell { padding: 26px 28px 28px; }
+.cell + .cell { border-top: 1px solid var(--ink); }
+
+/* About */
+.prose { text-align: center; font-weight: 450; }
+
+/* Past / Present / Future: an inverted label, like a small tab bar, over
+   each group of paragraphs. */
+.times dt {
+  width: fit-content;
+  margin-inline: auto;
+  padding: 4px 10px 3px;
+  background: var(--ink);
+  color: var(--paper);
+  font-family: var(--mono);
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+}
+.times dd { margin-top: 12px; }
+
+/* A list of results under a bold lead-in ("Along the way…"), one per line. */
+.wins { list-style: none; margin-top: 14px; }
+.wins li { font-size: 17px; line-height: 1.55; letter-spacing: -0.008em; }
+.wins li + li { margin-top: 12px; }
+.prose strong { font-weight: 700; }
+.times dd + dt { margin-top: 32px; }
+.prose p { font-size: 17px; line-height: 1.55; letter-spacing: -0.008em; }
+.prose p + p { margin-top: 18px; }
+
+/* Links in the prose branch out: underlined, and they invert on hover. */
+.prose a {
+  text-decoration: underline;
+  text-decoration-thickness: 1px;
+  text-underline-offset: 0.2em;
+  border-radius: 1px;
+  transition: background-color 140ms ease, color 140ms ease, box-shadow 140ms ease;
+}
+@media (hover: hover) {
+  .prose a:hover {
+    background: var(--ink);
+    color: var(--paper);
+    box-shadow: 0 0 0 0.14em var(--ink);
+    text-decoration-color: transparent;
+  }
+}
+
+/* GitHub: the contribution calendar, drawn like the profile page. A week per
+   column, rounded squares, and GitHub's five levels as five shades mixed from
+   paper to ink: grey to white in dark mode, light grey to black in light. */
+.sq {
+  --k: 9%;
+  display: block;
+  aspect-ratio: 1;
+  border-radius: 18%;
+  background: color-mix(in srgb, var(--ink) var(--k), var(--paper));
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--ink) 6%, transparent);
+}
+.l1 { --k: 30%; }
+.l2 { --k: 52%; }
+.l3 { --k: 76%; }
+.l4 { --k: 100%; }
+.sq.ev-haas     { background: var(--haas); }
+.sq.ev-yc       { background: var(--yc); }
+.sq.ev-award    { background: var(--award); }
+.sq.ev-deanza   { background: var(--deanza); }
+.sq.ev-berkeley { background: var(--berkeley); }
+
+.heat { --gap: 3px; text-align: center; }
+.cal {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  column-gap: 6px;
+  row-gap: 4px;
+  text-align: left;
+}
+.months, .wkdays {
+  font-family: var(--mono);
+  font-size: 10px;
+  line-height: 1;
+  color: var(--soft);
+}
+.months {
+  grid-column: 2;
+  grid-row: 2;
+  display: grid;
+  grid-template-columns: repeat(var(--weeks), minmax(0, 1fr));
+  column-gap: var(--gap);
+}
+.months span { grid-row: 1; white-space: nowrap; }
+.wkdays {
+  grid-column: 1;
+  grid-row: 3;
+  display: grid;
+  grid-template-rows: repeat(7, minmax(0, 1fr));
+  row-gap: var(--gap);
+  align-items: center;
+}
+.days {
+  grid-column: 2;
+  grid-row: 3;
+  display: grid;
+  grid-auto-flow: column;
+  grid-auto-columns: minmax(0, 1fr);
+  column-gap: var(--gap);
+}
+.week { display: grid; grid-template-rows: repeat(7, auto); row-gap: var(--gap); align-content: start; }
+
+/* A bracket over a stretch of weeks (a month, say), opening down toward
+   the grid, with its label above. */
+.stretch {
+  grid-column: 2;
+  grid-row: 1;
+  display: grid;
+  grid-template-columns: repeat(var(--weeks), minmax(0, 1fr));
+  column-gap: var(--gap);
+  padding-top: 18px;
+}
+.stretch-mark {
+  position: relative;
+  height: 7px;
+  border: 1px solid var(--ink);
+  border-bottom: 0;
+}
+.stretch-text {
+  position: absolute;
+  bottom: calc(100% + 5px);
+  left: 50%;
+  transform: translateX(-50%);
+  font-family: var(--mono);
+  font-size: 10px;
+  line-height: 12px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+
+/* A note under one week: an arrow up into the column, elbowing out to a
+   label on whichever side has more room. */
+.note {
+  grid-column: 2;
+  grid-row: 4;
+  display: grid;
+  grid-template-columns: repeat(var(--weeks), minmax(0, 1fr));
+  column-gap: var(--gap);
+  min-height: 28px;
+}
+.note-mark { position: relative; }
+.note-mark svg {
+  position: absolute;
+  top: 0;
+  left: calc(50% - 7px);
+  width: 14px;
+  height: 22px;
+  overflow: visible;
+  fill: none;
+  stroke: var(--ink);
+  stroke-width: 1;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+.note-text {
+  position: absolute;
+  top: 11px;
+  left: calc(50% + 11px);
+  font-family: var(--mono);
+  font-size: 10px;
+  line-height: 12px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+.to-left .note-text { left: auto; right: calc(50% + 11px); text-align: right; }
+@media (hover: hover) {
+  .days .sq:hover { outline: 1px solid var(--ink); outline-offset: 1px; }
+}
+
+.heat-head, .heat-legend {
+  font-family: var(--mono);
+  font-size: 11px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+/* One line, always: a long milestone name is cut short here (the key below
+   has it in full), so the grid never jumps while you hover. */
+.heat-head {
+  margin-bottom: 14px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.heat-head a { text-underline-offset: 0.25em; }
+@media (hover: hover) {
+  .heat-head a:hover { text-decoration: underline; }
+}
+.heat-day, .heat.reading .heat-total { display: none; }
+.heat.reading .heat-day { display: inline; }
+
+.heat-legend {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  gap: 4px;
+  margin-top: 14px;
+  color: var(--soft);
+}
+.heat-legend .sq { width: 10px; }
+.heat-legend .sq:first-of-type { margin-left: 4px; }
+.heat-legend .sq:last-of-type { margin-right: 4px; }
+
+.keys {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 8px 20px;
+  margin-top: 12px;
+  list-style: none;
+  font-family: var(--mono);
+  font-size: 10px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+.keys li { display: flex; align-items: center; gap: 7px; }
+.keys .sq { width: 10px; flex: none; }
+
+/* Where to find me: four icons in a row. Each square inverts on hover and
+   its icon hops, like the letters in the name. */
+.find { display: grid; grid-template-columns: repeat(4, 1fr); }
+.find a {
+  display: grid;
+  place-items: center;
+  height: 104px;
+  transition: background-color 160ms ease, color 160ms ease;
+}
+.find a + a { border-left: 1px solid var(--ink); }
+.find a:focus-visible { outline-offset: -6px; }
+.find svg {
+  width: 30px;
+  height: 30px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.6;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  transition: transform 520ms var(--pop);
+}
+@media (hover: hover) {
+  .find a:hover { background: var(--ink); color: var(--paper); }
+  .find a:hover svg { transform: translateY(-4px) rotate(-6deg); transition-duration: 160ms; }
+}
+
+/* ---------- footer ---------- */
+
+.foot {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 6px 24px;
+  padding: 16px var(--gut) 22px;
+  font-family: var(--mono);
+  font-size: 11px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+.foot a { text-underline-offset: 0.25em; }
+@media (hover: hover) {
+  .foot a:hover { text-decoration: underline; }
+}
+
+/* ---------- arrivals (JS adds .pending to things below the fold) ---------- */
+
+.pending { opacity: 0; transform: translateY(18px); }
+.pending.in {
+  opacity: 1;
+  transform: none;
+  transition: opacity 0.6s ease, transform 0.9s var(--glide);
+}
+/* The heatmap grows in as a wave, oldest week first. */
+.heat.pending .days .sq { transform: scale(0); }
+.heat.pending.in .days .sq {
+  transform: none;
+  transition: transform 500ms var(--pop) calc(var(--w) * 14ms);
+}
+/* The note appears once the wave reaches its column. */
+.heat.pending .note-mark { opacity: 0; }
+.heat.pending.in .note-mark {
+  opacity: 1;
+  transition: opacity 400ms ease calc(var(--w) * 14ms + 450ms);
+}
+
+.tab.pending { opacity: 1; transform: scaleX(0); }
+.tab.pending span { opacity: 0; }
+.tab.pending.in { transform: scaleX(1); transition: transform 0.75s cubic-bezier(0.7, 0, 0.2, 1); }
+.tab.pending.in span { opacity: 1; transition: opacity 0.3s ease 0.5s; }
+
+/* ---------- intro (intro.ts) ----------
+   Until the intro takes over, what it animates waits hidden. The reel is
+   the strip of letters a name slot spins through. */
+
+.intro .top .strip { clip-path: inset(0 50%); }
+.intro .name, .intro .box { visibility: hidden; }
+
+.reel { position: absolute; inset: 0; pointer-events: none; }
+.reel > span { position: absolute; left: 0; right: 0; height: 100%; text-align: center; }
+.reel > .mono { font-family: var(--mono); font-weight: 700; }
+
+/* ---------- smaller screens ---------- */
+
+/* Same breakpoint as the original room: half the depth on phones. */
+@media (max-width: 767px) {
+  .room { padding: 7.5rem 0; }
+}
+
+@media (max-width: 560px) {
+  :root { --gut: 14px; }
+  .strip span:last-child:not(.ticks) { display: none; }
+  .box { width: calc(100% - 48px); }
+  .cell { padding: 22px 18px 22px; }
+  .prose p, .wins li { font-size: 16px; }
+  /* The whole year still fits: smaller squares, no weekday labels. */
+  .heat { --gap: 1px; }
+  .cal { column-gap: 0; }
+  .wkdays { display: none; }
+  .months { font-size: 8px; }
+  .note { min-height: 38px; }
+  .stretch-text { left: 0; transform: none; font-size: 9px; }
+  .note-text { font-size: 9px; white-space: normal; width: max-content; max-width: 120px; }
+  .heat-head, .heat-legend { font-size: 10px; }
+  .find a { height: 80px; }
+  .find svg { width: 26px; height: 26px; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .ltr, .find svg { transition: none; }
+}
