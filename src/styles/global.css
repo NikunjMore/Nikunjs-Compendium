@@ -215,7 +215,7 @@ a:focus-visible { outline: 2px solid var(--ink); outline-offset: 3px; }
 .cell + .cell { border-top: 1px solid var(--ink); }
 
 /* About */
-.prose { text-align: center; font-weight: 450; }
+.prose { text-align: center; font-weight: 500; }
 
 /* Past / Present / Future: an inverted label, like a small tab bar, over
    each group of paragraphs. */
@@ -237,7 +237,7 @@ a:focus-visible { outline: 2px solid var(--ink); outline-offset: 3px; }
 .wins { list-style: none; margin-top: 14px; }
 .wins li { font-size: 17px; line-height: 1.55; letter-spacing: -0.008em; }
 .wins li + li { margin-top: 12px; }
-.prose strong { font-weight: 700; }
+.prose strong { font-weight: 750; }
 .times dd + dt { margin-top: 32px; }
 .prose p { font-size: 17px; line-height: 1.55; letter-spacing: -0.008em; }
 .prose p + p { margin-top: 18px; }
