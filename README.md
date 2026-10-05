@@ -1,6 +1,6 @@
 # nikunjmore.com
 
-Nikunj More's personal site: one page in a 3D room, set in Geist. Built with Astro, deployed on Vercel.
+Nikunj More's personal site: one page in a 3D room, set in Geist and Libron. Built with Astro, deployed on Vercel.
 
 - Content and markup: `src/pages/index.astro`.
 - Styles: `src/styles/global.css`. Black and white, except the milestone days in the heatmap; light and dark follow the system setting.
@@ -9,7 +9,7 @@ Nikunj More's personal site: one page in a 3D room, set in Geist. Built with Ast
 - `src/scripts/intro.ts` plays the intro on every load (about 2s): the strips draw out, the name spins in like slot-machine reels, the box rises, and the room's lines shoot out of it. Skipped for reduced motion; an inline script in `<head>` releases the page after 4s no matter what.
 - `src/lib/github.ts` reads the public GitHub contribution calendar (github.com/users/NikunjMore/contributions, no token) for the heatmap section. `src/scripts/heat.ts` names the hovered day. The heatmap's start date, colored milestone days (`events`, `kinds`), the April bracket (`stretch`) and the Claude Code note (`discovered`) are set at the top of `src/pages/index.astro`.
 - `src/scripts/main.ts` runs smooth scrolling (Lenis 1.1.13, default settings) and the frame loop. `src/scripts/reveal.ts` handles arrivals and count-ups.
-- Everything is set in Geist (vercel.com/font), self-hosted in `public/fonts` (SIL Open Font License). The letters that roll in the name use the rest of the family: the five Geist Pixel shapes, Geist Mono at its heaviest, and Geist at its thinnest; those load after the page does.
+- Type: the name is set in Geist (vercel.com/font), all other text in Libron (github.com/nicoverbruggen/libron, a serif for reading), and small uppercase labels in Geist Mono. All self-hosted in `public/fonts` (SIL Open Font License; license texts alongside). The letters that roll in the name use the rest of the Geist family: the five Geist Pixel shapes, Geist Mono at its heaviest, and Geist at its thinnest; those load after the page does.
 - Icons in "Where to find me" are from Lucide (ISC License).
 
 ## Running it
