@@ -1,6 +1,7 @@
 /*
- * Black and white. Text in Libron (a serif for reading, github.com/nicoverbruggen/libron),
- * small uppercase labels in Geist Mono.
+ * Black and white. The name is set in Geist; all other text in Libron (a serif
+ * for reading, github.com/nicoverbruggen/libron); small uppercase labels in
+ * Geist Mono.
  * Dark mode swaps the two; the room's lines use --ink too.
  */
 
@@ -35,6 +36,7 @@
   --soft:  rgba(0, 0, 0, 0.55);
   --gut:   20px;
   --sans:  'Libron', Georgia, 'Times New Roman', serif;
+  --name:  'Geist', ui-sans-serif, system-ui, sans-serif;
   --mono:  'Geist Mono', ui-monospace, Menlo, monospace;
   --pop:   cubic-bezier(0.34, 1.7, 0.5, 1);   /* overshoot, for little hops */
   --glide: cubic-bezier(0.16, 1, 0.3, 1);
@@ -119,10 +121,11 @@ a:focus-visible { outline: 2px solid var(--ink); outline-offset: 3px; }
   align-items: center;
   justify-content: space-between;
   margin: 2vw 0 1.6vw;
-  font-size: calc((100vw - 2 * var(--gut)) * 0.129);   /* Libron Bold runs wider than Geist */
+  font-family: var(--name);
+  font-size: calc((100vw - 2 * var(--gut)) * 0.152);
   font-weight: 800;
-  line-height: 0.84;   /* Libron's capitals sit higher; this keeps them inside the slot */
-  letter-spacing: -0.03em;
+  line-height: 0.8;
+  letter-spacing: -0.065em;
   text-transform: uppercase;
 }
 .word { display: inline-flex; }
@@ -133,7 +136,7 @@ a:focus-visible { outline: 2px solid var(--ink); outline-offset: 3px; }
 .ltr {
   position: relative;
   display: inline-block;
-  margin-right: -0.03em;
+  margin-right: -0.065em;
   letter-spacing: 0;
   transition: transform 520ms var(--pop);
 }
