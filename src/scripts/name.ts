@@ -72,7 +72,7 @@ export function initName(calm: boolean) {
     return ctx.measureText(letter).width;
   };
 
-  // `scale` brings a font's capitals to the height of Geist's.
+  // `scale` brings a font's capitals to the height of the name's own.
   type Loaded = Font & { scale: number };
   let fonts: Loaded[] = [];
   let visible = true;
@@ -154,9 +154,12 @@ export function initName(calm: boolean) {
     const ok = await Promise.all(
       FONTS.map((f) => document.fonts.load(css(f, 100), text).then((got) => got.length > 0, () => false)),
     );
-    await document.fonts.load('800 100px Geist', text);
-    const geist = capOf('800 100px Geist');
-    fonts = FONTS.filter((_, i) => ok[i]).map((f) => ({ ...f, scale: geist / capOf(css(f, 100)) }));
+    // The name's own font (whatever --sans is), measured at the weight it's set in.
+    const cs = getComputedStyle(name);
+    const own = `${cs.fontWeight} 100px ${cs.fontFamily}`;
+    await document.fonts.load(own, text);
+    const cap = capOf(own);
+    fonts = FONTS.filter((_, i) => ok[i]).map((f) => ({ ...f, scale: cap / capOf(css(f, 100)) }));
     if (!fonts.length) return;
 
     slots.forEach((slot) => {

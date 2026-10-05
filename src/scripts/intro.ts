@@ -67,9 +67,11 @@ export async function initIntro(room: Room) {
   const html = document.documentElement;
   if (!html.classList.contains('intro')) return;
 
-  // Wait for Geist (preloaded, so usually instant), but never long.
+  // Wait for the name's font and Geist Mono (preloaded, so usually instant),
+  // but never long.
+  const cs = getComputedStyle(document.querySelector('.name') ?? html);
   await Promise.race([
-    Promise.all([document.fonts.load('800 100px Geist'), document.fonts.load('700 100px "Geist Mono"')]),
+    Promise.all([document.fonts.load(`${cs.fontWeight} 100px ${cs.fontFamily}`), document.fonts.load('700 100px "Geist Mono"')]),
     wait(900),
   ]);
   // Too late: the inline script's safety timer already showed the page.

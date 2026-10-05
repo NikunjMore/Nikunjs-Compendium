@@ -1,5 +1,6 @@
 /*
- * Black and white, one family (Geist Sans + Geist Mono).
+ * Black and white. Text in Libron (a serif for reading, github.com/nicoverbruggen/libron),
+ * small uppercase labels in Geist Mono.
  * Dark mode swaps the two; the room's lines use --ink too.
  */
 
@@ -9,6 +10,11 @@
   font-weight: 100 900;
   font-display: swap;
 }
+/* Libron v0.25, SIL Open Font License (public/fonts/Libron-OFL.txt). */
+@font-face { font-family: 'Libron'; src: url('/fonts/Libron-Regular.woff2') format('woff2'); font-weight: 400; font-style: normal; font-display: swap; }
+@font-face { font-family: 'Libron'; src: url('/fonts/Libron-Italic.woff2') format('woff2'); font-weight: 400; font-style: italic; font-display: swap; }
+@font-face { font-family: 'Libron'; src: url('/fonts/Libron-Bold.woff2') format('woff2'); font-weight: 700; font-style: normal; font-display: swap; }
+@font-face { font-family: 'Libron'; src: url('/fonts/Libron-BoldItalic.woff2') format('woff2'); font-weight: 700; font-style: italic; font-display: swap; }
 @font-face {
   font-family: 'Geist Mono';
   src: url('/fonts/GeistMono-Variable.woff2') format('woff2');
@@ -28,7 +34,7 @@
   --ink:   #000000;
   --soft:  rgba(0, 0, 0, 0.55);
   --gut:   20px;
-  --sans:  'Geist', ui-sans-serif, system-ui, sans-serif;
+  --sans:  'Libron', Georgia, 'Times New Roman', serif;
   --mono:  'Geist Mono', ui-monospace, Menlo, monospace;
   --pop:   cubic-bezier(0.34, 1.7, 0.5, 1);   /* overshoot, for little hops */
   --glide: cubic-bezier(0.16, 1, 0.3, 1);
@@ -113,10 +119,10 @@ a:focus-visible { outline: 2px solid var(--ink); outline-offset: 3px; }
   align-items: center;
   justify-content: space-between;
   margin: 2vw 0 1.6vw;
-  font-size: calc((100vw - 2 * var(--gut)) * 0.152);
+  font-size: calc((100vw - 2 * var(--gut)) * 0.129);   /* Libron Bold runs wider than Geist */
   font-weight: 800;
-  line-height: 0.8;
-  letter-spacing: -0.065em;
+  line-height: 0.84;   /* Libron's capitals sit higher; this keeps them inside the slot */
+  letter-spacing: -0.03em;
   text-transform: uppercase;
 }
 .word { display: inline-flex; }
@@ -127,7 +133,7 @@ a:focus-visible { outline: 2px solid var(--ink); outline-offset: 3px; }
 .ltr {
   position: relative;
   display: inline-block;
-  margin-right: -0.065em;
+  margin-right: -0.03em;
   letter-spacing: 0;
   transition: transform 520ms var(--pop);
 }
